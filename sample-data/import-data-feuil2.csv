@@ -1,0 +1,13 @@
+id_interne,designation,quantite,unite,fournisseur,prix_unitaire,date_achat,numero_bon_commande,responsable,site,commentaire
+F2-001,Câble HDMI 2m,25,unité,LDLC,12.99,2024-01-10,BC-2024-001,Marie Dupont,Paris - Siège,Stock bureau
+F2-002,Souris filaire USB,10,unité,Amazon Business,15.50,2024-01-15,BC-2024-002,Jean Martin,Lyon - Agence,Remplacement
+F2-003,Hub USB-C 7 ports,8,unité,Anker,45.00,2024-02-01,BC-2024-003,Marie Dupont,Paris - Siège,Nouveaux postes
+F2-004,Casque audio Sony,5,unité,Fnac Pro,89.99,2024-02-10,BC-2024-004,Sophie Bernard,Marseille - Agence,Télétravail
+F2-005,Tapis de souris XL,20,unité,Amazon Business,8.90,2024-02-15,BC-2024-005,Jean Martin,Lyon - Agence,Stock
+F2-006,Câble USB-C 1m,30,unité,Anker,9.99,2024-03-01,BC-2024-006,Marie Dupont,Paris - Siège,Stock
+F2-007,Stand ordinateur portable,6,unité,LDLC,35.00,2024-03-05,BC-2024-007,Pierre Moreau,Paris - Siège,Ergonomie
+F2-008,Alimentation USB multiport,4,unité,Belkin,55.00,2024-03-10,BC-2024-008,Sophie Bernard,Marseille - Agence,Salles réunion
+F2-009,Écouteurs Bluetooth,8,unité,JBL,79.00,2024-03-20,BC-2024-009,Jean Martin,Lyon - Agence,Appels clients
+F2-010,Rallonge électrique 3m,12,unité,Legrand,22.00,2024-04-01,BC-2024-010,Marie Dupont,Paris - Siège,Infrastructure
+F2-011,Batterie externe 20000mAh,6,unité,Anker,49.99,2024-04-05,BC-2024-011,Pierre Moreau,Paris - Siège,Déplacements
+F2-012,Support double écran,3,unité,Ergotron,149.00,2024-04-10,BC-2024-012,Sophie Bernard,Marseille - Agence,Nouveaux bureaux

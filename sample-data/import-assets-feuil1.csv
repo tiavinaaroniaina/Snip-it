@@ -1,0 +1,16 @@
+name,asset_tag,category,location,serial,model,status,purchase_date,purchase_cost
+MacBook Pro 14 pouces,LAP-001,Laptop,Paris - Siège,C02XL0J2MD6N,Apple MacBook Pro 14,Ready to Deploy,2024-01-15,2499
+MacBook Air M2,LAP-002,Laptop,Lyon - Agence,C02YM3J2MD6N,Apple MacBook Air M2,Deployed,2024-02-10,1299
+Dell XPS 15,LAP-003,Laptop,Marseille - Agence,5CG123456,Dell XPS 15 9530,Ready to Deploy,2024-03-01,1899
+iPhone 15 Pro,MOB-001,Smartphone,Paris - Siège,DNPXQ2HN,Apple iPhone 15 Pro,Deployed,2024-01-20,1199
+Samsung Galaxy S24,MOB-002,Smartphone,Lyon - Agence,R58T123456,Samsung Galaxy S24,Deployed,2024-02-05,999
+iPad Pro 12.9,TAB-001,Tablette,Paris - Siège,DMPQ3J2N,Apple iPad Pro 12.9,Ready to Deploy,2024-03-15,1099
+Dell Monitor 27",MON-001,Écran,Paris - Siège,CN-0F1234,Dell UltraSharp U2722D,Deployed,2023-11-01,599
+LG 4K Monitor,MON-002,Écran,Lyon - Agence,312NTXJ,LG 27UK850-W,Deployed,2023-12-10,449
+Logitech MX Keys,KBD-001,Clavier,Paris - Siège,2249LZ123,Logitech MX Keys,Deployed,2023-10-05,129
+Apple Magic Mouse,MOU-001,Souris,Paris - Siège,C02Y123456,Apple Magic Mouse 3,Deployed,2024-01-10,89
+HP LaserJet Pro,PRN-001,Imprimante,Paris - Siège,VNB3D12345,HP LaserJet Pro M404dn,Deployed,2023-06-20,399
+Cisco Switch 24 ports,NET-001,Réseau,Paris - Salle serveur,FOC1234X567,Cisco Catalyst 2960-X,Deployed,2022-05-15,1299
+Synology NAS DS920+,SRV-001,Serveur,Paris - Salle serveur,1940PDN123456,Synology DS920+,Deployed,2022-08-10,699
+UPS APC 1500VA,UPS-001,Alimentation,Paris - Salle serveur,JS2317123456,APC Smart-UPS 1500VA,Deployed,2023-01-20,549
+Webcam Logitech C922,CAM-001,Caméra,Paris - Salle de réunion,2026LZ789012,Logitech C922 Pro,Ready to Deploy,2024-04-01,99
