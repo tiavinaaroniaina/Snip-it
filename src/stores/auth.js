@@ -1,7 +1,8 @@
+// stores/auth.js
+// Authentification backoffice (code d'accès + sessionStorage)
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-// Code unique d'accès backoffice — modifiable ici
 const BACKOFFICE_CODE = 'ADMIN2026'
 
 export const useAuthStore = defineStore('auth', () => {

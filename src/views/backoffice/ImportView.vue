@@ -212,9 +212,9 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import Papa from 'papaparse'
 import { useDbStore } from '@/stores/db'
-import { fullImport, normalizeCSVHeaders, fixCSVSeparator, fixDecimalCommas } from '@/services/snipeit'
+import { fullImport } from '@/services/import'
+import { parseCSVFile } from '@/composables/useParseCSV'
 
 const db = useDbStore()
 
@@ -244,25 +244,10 @@ const previewHeaders2 = computed(() =>
   preview2.value.length ? Object.keys(preview2.value[0]).slice(0, 6) : []
 )
 
+// parseCSV : délégué au composable useParseCSV
+// (gère FileReader + fixDecimalCommas + PapaParse + fixCSVSeparator + normalizeCSVHeaders)
 function parseCSV(file) {
-  return new Promise((resolve, reject) => {
-    // Lire d'abord le texte brut pour corriger les virgules décimales
-    // AVANT que PapaParse ne les confonde avec des séparateurs de colonnes
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const rawText  = e.target.result
-      const fixedText = fixDecimalCommas(rawText)   // ← fix virgule décimale
-      Papa.parse(fixedText, {
-        header: true,
-        skipEmptyLines: true,
-        delimitersToGuess: [',', ';', '\t', '|'],
-        complete: r => resolve(r.data),
-        error:    e => reject(e),
-      })
-    }
-    reader.onerror = () => reject(new Error('Impossible de lire le fichier'))
-    reader.readAsText(file, 'UTF-8')
-  })
+  return parseCSVFile(file)
 }
 
 function onDrop(e, type) {
@@ -275,11 +260,8 @@ function onFile(e, type) {
 }
 async function assignFile(f, type) {
   if (!f) return
-  let rows = await parseCSV(f)
-  // Corriger séparateur ";" Excel FR si nécessaire
-  rows = fixCSVSeparator(rows)
-  // Normaliser les en-têtes : BOM, accents, majuscules, espaces → clés standard
-  rows = normalizeCSVHeaders(rows)
+  // parseCSVFile gère : FileReader, fixDecimalCommas, PapaParse, fixCSVSeparator, normalizeCSVHeaders
+  const rows = await parseCSV(f)
   if (type === 'assets') { file1.value = f; preview1.value = rows; msg1.value = null; snipeitLog.value = [] }
   else                   { file2.value = f; preview2.value = rows; msg2.value = null }
 }
