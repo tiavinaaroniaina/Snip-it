@@ -62,6 +62,15 @@ function initTables() {
       key   TEXT PRIMARY KEY,
       value TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    -- Initialisation par défaut si vide
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('kanban_colors', '{"open":"#f8f9fa","in_progress":"#fff9db","resolved":"#ebfbee"}');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('status_names', '{"open":"Nouveau","in_progress":"En cours","resolved":"Terminé"}');
   `)
   saveDb()
 }
@@ -91,6 +100,40 @@ app.use(express.json({ limit: '10mb' }))
 app.get('/api/health', (req, res) => {
   const row = queryGet('SELECT COUNT(*) as n FROM feuil2')
   res.json({ status: 'ok', db: DB_PATH, feuil2_count: row ? row.n : 0 })
+})
+
+// ── GET /api/settings — lire tous les réglages ────────
+app.get('/api/settings', (req, res) => {
+  try {
+    const rows = queryAll('SELECT key, value FROM settings')
+    const settings = {}
+    rows.forEach(r => {
+      try { settings[r.key] = JSON.parse(r.value) }
+      catch { settings[r.key] = r.value }
+    })
+    res.json(settings)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── POST /api/settings — mettre à jour un réglage ─────
+app.post('/api/settings', (req, res) => {
+  try {
+    const { key, value } = req.body
+    if (!key) return res.status(400).json({ error: 'Clé manquante' })
+    
+    const valStr = typeof value === 'object' ? JSON.stringify(value) : String(value)
+    
+    db.run(
+      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+      [key, valStr]
+    )
+    saveDb()
+    res.json({ success: true })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // ── GET /api/feuil2 — lire toutes les lignes ──────────

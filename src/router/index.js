@@ -9,11 +9,13 @@ import BOImport   from '@/views/backoffice/ImportView.vue'
 import BOReset    from '@/views/backoffice/ResetView.vue'
 import BOTickets  from '@/views/backoffice/TicketsView.vue'
 import BOFeuil2   from '@/views/backoffice/Feuil2View.vue'
+import BOKanbanConfig from '@/views/backoffice/KanbanSettingsView.vue'
 
 // Frontoffice
 import FOLayout   from '@/views/frontoffice/LayoutFO.vue'
 import FOAssets   from '@/views/frontoffice/AssetsView.vue'
 import FOTicket   from '@/views/frontoffice/NewTicketView.vue'
+import FOKanban   from '@/views/frontoffice/KanbanView.vue'
 
 const routes = [
   // ── Redirect racine ──────────────────────────────────
@@ -34,6 +36,7 @@ const routes = [
       { path: 'reset',     component: BOReset,   meta: { title: 'Réinitialisation' } },
       { path: 'tickets',   component: BOTickets, meta: { title: 'Tickets' } },
       { path: 'feuil2',    component: BOFeuil2,  meta: { title: 'Feuil 2 — SQLite' } },
+      { path: 'kanban-config', component: BOKanbanConfig, meta: { title: 'Config Kanban' } },
     ]
   },
 
@@ -45,6 +48,7 @@ const routes = [
       { path: '',        redirect: '/front/assets' },
       { path: 'assets',  component: FOAssets, meta: { title: 'Catalogue d\'équipements' } },
       { path: 'ticket',  component: FOTicket, meta: { title: 'Nouveau ticket' } },
+      { path: 'kanban',  component: FOKanban, meta: { title: 'Tableau Kanban' } },
     ]
   },
 
