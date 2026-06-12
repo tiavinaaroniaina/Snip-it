@@ -25,8 +25,8 @@
         <div>
           <h4>NewApp + SnipeIT (tout)</h4>
           <p class="text-sm text-muted mt-1">
-            Supprime dans SnipeIT :<br>
-            <span class="text-red mono text-xs">assets · modèles · catégories · fabricants · localisations · statuts · entreprises · départements</span>
+            Supprime dans SnipeIT + purge MySQL :<br>
+            <span class="text-red mono text-xs">assets · modèles · catégories · fabricants · localisations · statuts · utilisateurs · entreprises · départements</span>
           </p>
         </div>
         <div class="radio-dot" :class="{ selected: mode === 'both' }"></div>
@@ -62,13 +62,13 @@
 
       <!-- Données SnipeIT -->
       <template v-if="mode === 'both'">
-        <div class="scope-divider">SnipeIT — supprimé via API</div>
+        <div class="scope-divider">SnipeIT — API soft-delete + Purge MySQL directe</div>
         <div class="scope-list">
           <div class="scope-item danger-scope" v-for="s in snipeitScope" :key="s.label">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
             <span>{{ s.label }}</span>
             <span class="mono text-xs" style="color:var(--red)">{{ s.endpoint }}</span>
-            <span class="badge badge-red ml-auto">SnipeIT API</span>
+            <span class="badge badge-red ml-auto">API + Purge MySQL</span>
           </div>
         </div>
       </template>
@@ -178,32 +178,65 @@ async function doReset() {
 
   try {
     if (mode.value === 'both') {
-      // ── Reset SnipeIT complet ──
+      // ── Étape 1 : Soft-delete via API SnipeIT ──
+      currentStep.value = 'Soft-delete via API SnipeIT…'
       const results = await fullResetSnipeIT((step) => {
         currentStep.value = step
-        // Extraire le nom de l'entité depuis le message pour l'affichage
         const match = step.match(/Suppression : (.+)…/)
         if (match) partialResults.value[match[1]] = { total: '?', deleted: 0, errors: 0 }
       })
-
-      // Mettre à jour les résultats finaux
       partialResults.value = results
+
+      // ── Étape 2 : Purge directe MySQL (vrais DELETE SQL) ──
+      currentStep.value = 'Purge MySQL directe (suppression définitive)…'
+      try {
+        // AbortController : timeout 30s max — évite un loading infini si Node ne répond pas
+        const controller = new AbortController()
+        const timeoutId  = setTimeout(() => controller.abort(), 30000)
+
+        let purgeRes
+        try {
+          purgeRes = await fetch('http://localhost:3001/api/snipeit-purge', {
+            method: 'DELETE',
+            signal: controller.signal,
+          })
+        } finally {
+          clearTimeout(timeoutId)
+        }
+
+        const purgeData = await purgeRes.json()
+        if (!purgeRes.ok) throw new Error(purgeData.error || 'Erreur purge MySQL')
+
+        // Fusionner les résultats MySQL dans l'affichage
+        Object.entries(purgeData.results || {}).forEach(([label, r]) => {
+          partialResults.value[`DB:${label}`] = r
+        })
+        if (purgeData.errors?.length) {
+          purgeData.errors.forEach(e => console.warn('Purge MySQL warning:', e))
+        }
+      } catch (e) {
+        // La purge MySQL est optionnelle — on avertit mais on ne bloque pas
+        const msg = e.name === 'AbortError'
+          ? 'Timeout 30s dépassé — vérifiez que node server/index.js tourne et que server/.env est configuré.'
+          : e.message
+        error.value = `⚠ Purge MySQL : ${msg}`
+      }
 
       const totalDeleted = Object.values(results).reduce((s, r) => s + (r.deleted || 0), 0)
       const totalErrors  = Object.values(results).reduce((s, r) => s + (r.errors  || 0), 0)
 
-      // Vider le localStorage
-      db.resetAll()
+      // Vider le localStorage + SQLite (await obligatoire car resetAll est async)
+      currentStep.value = 'Nettoyage NewApp…'
+      await db.resetAll()
 
       currentStep.value = ''
       doneMsg.value = totalErrors === 0
-        ? `✓ ${totalDeleted} éléments supprimés dans SnipeIT. NewApp vidée.`
-        : `✓ ${totalDeleted} supprimés, ${totalErrors} erreur(s). NewApp vidée.`
+        ? `✓ ${totalDeleted} éléments supprimés (API + base MySQL purgée). NewApp vidée.`
+        : `✓ ${totalDeleted} supprimés, ${totalErrors} erreur(s). Base MySQL purgée. NewApp vidée.`
 
     } else {
       // ── Local uniquement ──
-      await new Promise(r => setTimeout(r, 400))
-      db.resetAll()
+      await db.resetAll()
       doneMsg.value = '✓ NewApp réinitialisée. SnipeIT non modifié.'
     }
 
@@ -213,7 +246,9 @@ async function doReset() {
   } catch (e) {
     error.value = e.message
   } finally {
-    loading.value = false
+    // S'assurer que loading est bien false quoi qu'il arrive
+    loading.value     = false
+    currentStep.value = ''
   }
 }
 </script>

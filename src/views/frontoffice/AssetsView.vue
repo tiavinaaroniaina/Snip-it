@@ -91,6 +91,7 @@
           </thead>
           <tbody>
             <tr v-for="a in paginated" :key="a.id" @click="openAsset(a)" style="cursor:pointer">
+              
               <td class="fw-600">{{ a.name || '—' }}</td>
               <td class="mono text-xs">{{ a.asset_tag || '—' }}</td>
               <td><span class="tag">{{ a.category || '—' }}</span></td>

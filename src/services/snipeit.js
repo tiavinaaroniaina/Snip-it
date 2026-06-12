@@ -168,3 +168,16 @@ export async function deleteUser(id) {
   const res = await api.delete(`/users/${id}`)
   return res.data
 }
+
+export async function createUser(data) {
+  const res = await api.post('/users', data)
+  return res.data
+}
+
+export async function checkoutAsset(assetId, userId) {
+  const res = await api.post(`/hardware/${assetId}/checkout`, {
+    checkout_to_type: 'user',
+    assigned_user:    userId,
+  })
+  return res.data
+}

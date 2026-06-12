@@ -36,7 +36,7 @@ const routes = [
       { path: 'reset',     component: BOReset,   meta: { title: 'Réinitialisation' } },
       { path: 'tickets',   component: BOTickets, meta: { title: 'Tickets' } },
       { path: 'feuil2',    component: BOFeuil2,  meta: { title: 'Feuil 2 — SQLite' } },
-      { path: 'kanban-config', component: BOKanbanConfig, meta: { title: 'Config Kanban' } },
+      { path: 'settings',  component: BOKanbanConfig, meta: { title: 'Configuration Kanban' } },
     ]
   },
 
@@ -47,8 +47,8 @@ const routes = [
     children: [
       { path: '',        redirect: '/front/assets' },
       { path: 'assets',  component: FOAssets, meta: { title: 'Catalogue d\'équipements' } },
-      { path: 'ticket',  component: FOTicket, meta: { title: 'Nouveau ticket' } },
       { path: 'kanban',  component: FOKanban, meta: { title: 'Tableau Kanban' } },
+      { path: 'ticket',  component: FOTicket, meta: { title: 'Nouveau ticket' } },
     ]
   },
 

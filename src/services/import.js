@@ -5,7 +5,7 @@
 import api from '@/services/api'
 import { clean, normalizeDate, normalizePrice } from '@/utils/formatters'
 import {
-  createAsset, fetchAssets, deleteAsset,
+  createAsset, updateAsset, fetchAssets, deleteAsset,
   createCategory, deleteCategory, fetchCategories,
   createLocation, deleteLocation, fetchLocations,
   createManufacturer, deleteManufacturer, fetchManufacturers,
@@ -13,7 +13,8 @@ import {
   createStatusLabel, deleteStatusLabel, fetchStatusLabels,
   fetchCompanies, deleteCompany,
   fetchDepartments, deleteDepartment,
-  fetchUsers,
+  fetchUsers, createUser, deleteUser,
+  checkoutAsset,
 } from '@/services/snipeit'
 
 // ── Helpers internes ──────────────────────────────────
@@ -32,15 +33,6 @@ function guessStatusType(name) {
 }
 
 // ── Import complet avec création en cascade ───────────
-/**
- * Importe un tableau de lignes CSV vers SnipeIT.
- * Crée automatiquement toutes les entités manquantes (fabricants, catégories, etc.)
- * sans créer de doublons grâce aux caches.
- *
- * @param {Array}    rows       - Lignes CSV normalisées
- * @param {Function} onProgress - Callback(step: string, pct: number)
- * @returns {{ created, failed, errors, log }}
- */
 export async function fullImport(rows, onProgress) {
   const log    = []
   const errors = []
@@ -52,11 +44,13 @@ export async function fullImport(rows, onProgress) {
   const cacheStatuses      = {}
   const cacheCompanies     = {}
   const cacheDepts         = {}
+  const cacheUsers         = {}   // clé : email.toLowerCase()
+  const cacheAssetTags     = {}   // clé : asset_tag.toLowerCase() → id existant
 
   // ── 1. Charger tout ce qui existe déjà dans SnipeIT ──
   onProgress?.('Chargement des données existantes dans SnipeIT…', 0)
   try {
-    const [mfrs, cats, locs, mdls, statuses, companies, depts] = await Promise.all([
+    const [mfrs, cats, locs, mdls, statuses, companies, depts, users, existingAssets] = await Promise.all([
       api.get('/manufacturers', { params: { limit: 500 } }),
       api.get('/categories',    { params: { limit: 500 } }),
       api.get('/locations',     { params: { limit: 500 } }),
@@ -64,14 +58,18 @@ export async function fullImport(rows, onProgress) {
       api.get('/statuslabels',  { params: { limit: 200 } }),
       api.get('/companies',     { params: { limit: 500 } }),
       api.get('/departments',   { params: { limit: 500 } }),
+      api.get('/users',         { params: { limit: 500 } }),
+      api.get('/hardware',      { params: { limit: 500 } }),
     ])
-    ;(mfrs.data.rows     || []).forEach(r => { if (r?.name) cacheManufacturers[r.name.trim().toLowerCase()]  = r.id })
-    ;(cats.data.rows     || []).forEach(r => { if (r?.name) cacheCategories[r.name.trim().toLowerCase()]     = r.id })
-    ;(locs.data.rows     || []).forEach(r => { if (r?.name) cacheLocations[r.name.trim().toLowerCase()]      = r.id })
-    ;(mdls.data.rows     || []).forEach(r => { if (r?.name) cacheModels[r.name.trim().toLowerCase()]         = r.id })
-    ;(statuses.data.rows || []).forEach(r => { if (r?.name) cacheStatuses[normalizeStatusKey(r.name)]        = r.id })
-    ;(companies.data.rows|| []).forEach(r => { if (r?.name) cacheCompanies[r.name.trim().toLowerCase()]      = r.id })
-    ;(depts.data.rows    || []).forEach(r => { if (r?.name) cacheDepts[r.name.trim().toLowerCase()]          = r.id })
+    ;(mfrs.data.rows          || []).forEach(r => { if (r?.name)      cacheManufacturers[r.name.trim().toLowerCase()]      = r.id })
+    ;(cats.data.rows          || []).forEach(r => { if (r?.name)      cacheCategories[r.name.trim().toLowerCase()]         = r.id })
+    ;(locs.data.rows          || []).forEach(r => { if (r?.name)      cacheLocations[r.name.trim().toLowerCase()]          = r.id })
+    ;(mdls.data.rows          || []).forEach(r => { if (r?.name)      cacheModels[r.name.trim().toLowerCase()]             = r.id })
+    ;(statuses.data.rows      || []).forEach(r => { if (r?.name)      cacheStatuses[normalizeStatusKey(r.name)]            = r.id })
+    ;(companies.data.rows     || []).forEach(r => { if (r?.name)      cacheCompanies[r.name.trim().toLowerCase()]          = r.id })
+    ;(depts.data.rows         || []).forEach(r => { if (r?.name)      cacheDepts[r.name.trim().toLowerCase()]              = r.id })
+    ;(users.data.rows         || []).forEach(r => { if (r?.email)     cacheUsers[r.email.trim().toLowerCase()]             = r.id })
+    ;(existingAssets.data.rows|| []).forEach(r => { if (r?.asset_tag) cacheAssetTags[r.asset_tag.trim().toLowerCase()]     = r.id })
 
     log.push(
       `Chargé depuis SnipeIT : ` +
@@ -81,13 +79,16 @@ export async function fullImport(rows, onProgress) {
       `${Object.keys(cacheModels).length} modèles, ` +
       `${Object.keys(cacheStatuses).length} statuts, ` +
       `${Object.keys(cacheCompanies).length} entreprises, ` +
-      `${Object.keys(cacheDepts).length} départements`
+      `${Object.keys(cacheDepts).length} départements, ` +
+      `${Object.keys(cacheUsers).length} utilisateurs, ` +
+      `${Object.keys(cacheAssetTags).length} assets existants`
     )
   } catch (e) {
     throw new Error('Impossible de charger les données SnipeIT existantes : ' + e.message)
   }
 
-  // ── Helpers ensure* : trouve dans le cache ou crée ───
+  // ── Helpers ensure* ───────────────────────────────────
+
   async function ensureManufacturer(rawName) {
     const name = clean(rawName)
     if (!name) return null
@@ -170,7 +171,7 @@ export async function fullImport(rows, onProgress) {
     if (!cacheModels[key]) {
       try {
         if (!categoryId || !manufacturerId) {
-          throw new Error(`model_id requis mais category_id=${categoryId} ou manufacturer_id=${manufacturerId} manquant`)
+          throw new Error(`category_id=${categoryId} ou manufacturer_id=${manufacturerId} manquant`)
         }
         const r  = await createModel(name, categoryId, manufacturerId)
         const id = r?.payload?.id ?? r?.id ?? null
@@ -224,6 +225,47 @@ export async function fullImport(rows, onProgress) {
     return cacheDepts[key]
   }
 
+  async function ensureUser(rawName, rawEmail, companyId, deptId) {
+    const email = clean(rawEmail)
+    const name  = clean(rawName)
+    if (!email && !name) return null
+
+    const key = email ? email.toLowerCase() : `name:${name.toLowerCase()}`
+    if (!cacheUsers[key]) {
+      try {
+        const username = email
+          ? email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '')
+          : name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '')
+
+        const parts     = (name || username).trim().split(/\s+/)
+        const firstName = parts[0]                 || username
+        const lastName  = parts.slice(1).join(' ') || ''
+
+        const payload = {
+          first_name: firstName,
+          last_name:  lastName,
+          username,
+          ...(email     && { email }),
+          ...(companyId && { company_id:    companyId }),
+          ...(deptId    && { department_id: deptId }),
+          activated:             true,
+          password:              'Change@2026!',
+          password_confirmation: 'Change@2026!',
+        }
+
+        const r  = await createUser(payload)
+        const id = r?.payload?.id ?? r?.id ?? null
+        if (!id) throw new Error('ID non retourné par SnipeIT')
+        cacheUsers[key] = id
+        log.push(`✓ Utilisateur créé : "${firstName} ${lastName}" <${email || '—'}> (id=${id})`)
+      } catch (e) {
+        errors.push(`Utilisateur "${name || email}" : ${e.message}`)
+        return null
+      }
+    }
+    return cacheUsers[key]
+  }
+
   // ── 2. Traiter chaque ligne du CSV ───────────────────
   let created = 0
   let failed  = 0
@@ -234,17 +276,17 @@ export async function fullImport(rows, onProgress) {
     onProgress?.(`${rowLabel}…`, Math.round(((i + 1) / rows.length) * 100))
 
     try {
-      const assetTag    = clean(row.asset_tag)   || `AUTO-${Date.now()}-${i}`
-      const serial      = clean(row.serial)       || ''
-      const name        = clean(row.name)         || assetTag
-      const categoryRaw = clean(row.category)     || 'Non classé'
-      const mfrRaw      = clean(row.manufacturer) || clean(row.model)?.split(' ')?.[0] || 'Inconnu'
-      const modelRaw    = clean(row.model)        || name
-      const statusRaw   = clean(row.status)       || 'Ready to Deploy'
-      const companyRaw  = clean(row.company)
-      const deptRaw     = clean(row.department)
-      const userRaw     = clean(row.user)
-      const emailRaw    = clean(row.email)
+      const assetTag     = clean(row.asset_tag)   || `AUTO-${Date.now()}-${i}`
+      const serial       = clean(row.serial)       || ''
+      const name         = clean(row.name)         || assetTag
+      const categoryRaw  = clean(row.category)     || 'Non classé'
+      const mfrRaw       = clean(row.manufacturer) || clean(row.model)?.split(' ')?.[0] || 'Inconnu'
+      const modelRaw     = clean(row.model)        || name
+      const statusRaw    = clean(row.status)       || 'Ready to Deploy'
+      const companyRaw   = clean(row.company)
+      const deptRaw      = clean(row.department)
+      const userRaw      = clean(row.user)
+      const emailRaw     = clean(row.email)
       const purchaseDate = normalizeDate(row.purchase_date)
       const purchaseCost = normalizePrice(row.purchase_cost)
 
@@ -257,32 +299,56 @@ export async function fullImport(rows, onProgress) {
       const modelId   = await ensureModel(modelRaw, catId, mfrId)
       const companyId = await ensureCompany(companyRaw)
       const deptId    = await ensureDepartment(deptRaw, companyId)
+      const userId    = await ensureUser(userRaw, emailRaw, companyId, deptId)
 
       if (!modelId)  throw new Error(`model_id introuvable pour modèle "${modelRaw}"`)
       if (!catId)    throw new Error(`category_id introuvable pour catégorie "${categoryRaw}"`)
       if (!statusId) throw new Error(`status_id introuvable pour statut "${statusRaw}"`)
 
+      // Payload asset : PAS de assigned_to ici — SnipeIT l'ignore à la création.
+      // Le checkout vers l'utilisateur se fait via un appel séparé après création.
       const assetPayload = {
         name,
         asset_tag:  assetTag,
         status_id:  statusId,
         model_id:   modelId,
-        ...(serial        && { serial }),
-        ...(companyId     && { company_id:    companyId }),
-        ...(deptId        && { department_id: deptId }),
-        ...(purchaseDate  && { purchase_date: purchaseDate }),
-        ...(purchaseCost  && { purchase_cost: purchaseCost }),
-        ...((userRaw || emailRaw) && {
-          notes: [
-            userRaw  ? `Utilisateur : ${userRaw}`  : '',
-            emailRaw ? `Email : ${emailRaw}`        : '',
-          ].filter(Boolean).join(' | ')
-        }),
+        ...(serial       && { serial }),
+        ...(companyId    && { company_id:    companyId }),
+        ...(deptId       && { department_id: deptId }),
+        ...(purchaseDate && { purchase_date: purchaseDate }),
+        ...(purchaseCost && { purchase_cost: purchaseCost }),
       }
 
-      await createAsset(assetPayload)
+      // ── Upsert : update si asset_tag déjà présent, create sinon ──
+      const tagKey     = assetTag.toLowerCase()
+      const existingId = cacheAssetTags[tagKey]
+      let   assetId
+
+      if (existingId) {
+        await updateAsset(existingId, assetPayload)
+        assetId = existingId
+        log.push(`↺ Asset mis à jour : "${name}" [${assetTag}] (id=${assetId})`)
+      } else {
+        const result = await createAsset(assetPayload)
+        assetId = result?.payload?.id ?? result?.id ?? null
+        if (!assetId) throw new Error('Asset créé mais ID non retourné par SnipeIT')
+        cacheAssetTags[tagKey] = assetId
+        log.push(`✓ Asset créé : "${name}" [${assetTag}] (id=${assetId})`)
+      }
+
+      // ── Checkout vers l'utilisateur (appel séparé obligatoire) ──
+      if (userId && assetId) {
+        try {
+          await checkoutAsset(assetId, userId)
+          log.push(`  → Checkout vers user id=${userId}`)
+        } catch (e) {
+          // Le checkout échoue parfois si le statut n'est pas "deployable"
+          // On loggue l'avertissement mais on ne fait pas échouer l'asset
+          errors.push(`⚠ Checkout [${assetTag}] → user ${userId} : ${e.message}`)
+        }
+      }
+
       created++
-      log.push(`✓ Asset créé : "${name}" [${assetTag}]`)
 
     } catch (e) {
       failed++
@@ -294,26 +360,32 @@ export async function fullImport(rows, onProgress) {
 }
 
 // ── Reset complet SnipeIT (toutes entités) ────────────
-/**
- * Supprime toutes les entités dans SnipeIT dans le bon ordre.
- *
- * @param {Function} onProgress - Callback(step: string)
- * @returns {Object} Résultats par entité { label: { total, deleted, errors } }
- */
 export async function fullResetSnipeIT(onProgress) {
   const results = {}
 
+  // Supprime les IDs en parallèle par batch de BATCH_SIZE requêtes simultanées.
+  // Évite de saturer l'API SnipeIT tout en étant bien plus rapide que le séquentiel.
+  const BATCH_SIZE = 10
+
   async function purge(label, fetchFn, deleteFn) {
     onProgress?.(`Suppression : ${label}…`)
-    let deleted = 0, errors = 0
+    let deleted = 0
+    let errors  = 0
     try {
       const data = await fetchFn()
       const ids  = (data.rows || []).map(r => r.id)
       results[label] = { total: ids.length, deleted: 0, errors: 0 }
-      for (const id of ids) {
-        try   { await deleteFn(id); deleted++ }
-        catch { errors++ }
+
+      // Découper les IDs en batches et traiter chaque batch en parallèle
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = ids.slice(i, i + BATCH_SIZE)
+        const batchResults = await Promise.allSettled(batch.map(id => deleteFn(id)))
+        batchResults.forEach(r => {
+          if (r.status === 'fulfilled') deleted++
+          else                          errors++
+        })
       }
+
       results[label].deleted = deleted
       results[label].errors  = errors
     } catch (e) {
@@ -321,7 +393,8 @@ export async function fullResetSnipeIT(onProgress) {
     }
   }
 
-  // Ordre obligatoire : assets → modèles → puis le reste
+  // Les entités sont supprimées dans l'ordre obligatoire (dépendances FK)
+  // mais au sein de chaque entité les suppressions sont parallèles par batch.
   await purge('Assets',        () => fetchAssets({ limit: 500 }), deleteAsset)
   await purge('Modèles',       fetchModels,                        deleteModel)
   await purge('Catégories',    fetchCategories,                    deleteCategory)
@@ -329,22 +402,24 @@ export async function fullResetSnipeIT(onProgress) {
   await purge('Localisations', fetchLocations,                     deleteLocation)
   await purge('Statuts',       fetchStatusLabels,                  deleteStatusLabel)
 
-  // Détacher les utilisateurs avant de supprimer entreprises/départements
-  onProgress?.('Détachement des utilisateurs…')
+  // Utilisateurs : supprimer en parallèle par batch, hors superusers
+  onProgress?.('Suppression : Utilisateurs…')
   try {
     const usersData = await fetchUsers()
     const users     = (usersData.rows || []).filter(u => !u.permissions?.superuser)
-    for (const u of users) {
-      try {
-        await api.patch(`/users/${u.id}`, {
-          first_name:    u.first_name,
-          username:      u.username,
-          company_id:    null,
-          department_id: null,
-        })
-      } catch { /* ignorer les erreurs individuelles */ }
+    results['Utilisateurs'] = { total: users.length, deleted: 0, errors: 0 }
+
+    for (let i = 0; i < users.length; i += BATCH_SIZE) {
+      const batch        = users.slice(i, i + BATCH_SIZE)
+      const batchResults = await Promise.allSettled(batch.map(u => deleteUser(u.id)))
+      batchResults.forEach(r => {
+        if (r.status === 'fulfilled') results['Utilisateurs'].deleted++
+        else                          results['Utilisateurs'].errors++
+      })
     }
-  } catch { /* API users peut être restreinte */ }
+  } catch (e) {
+    results['Utilisateurs'] = { total: 0, deleted: 0, errors: 1, fetchError: e.message }
+  }
 
   await purge('Départements',  fetchDepartments,  deleteDepartment)
   await purge('Entreprises',   fetchCompanies,    deleteCompany)

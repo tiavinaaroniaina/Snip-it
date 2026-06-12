@@ -9,9 +9,6 @@ export default defineConfig(({ mode }) => {
   const snipeitToken = env.VITE_SNIPEIT_TOKEN || ''
   const snipeitUrl   = env.VITE_SNIPEIT_URL   || 'http://localhost:8000'
 
-  console.log('[Vite Config] SnipeIT URL:', snipeitUrl)
-  console.log('[Vite Config] SnipeIT Token loaded:', snipeitToken ? 'YES (starts with ' + snipeitToken.substring(0, 10) + '...)' : 'NO')
-
   return {
     plugins: [vue()],
     resolve: {

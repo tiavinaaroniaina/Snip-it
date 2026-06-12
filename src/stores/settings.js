@@ -20,7 +20,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const loading = ref(false)
   const error = ref(null)
 
-  async function fetchSettings() {
+  async function load() {
     loading.value = true
     try {
       const { data } = await axios.get(`${API_URL}/settings`)
@@ -50,7 +50,7 @@ export const useSettingsStore = defineStore('settings', () => {
     statusNames,
     loading,
     error,
-    fetchSettings,
+    load,
     updateSetting
   }
 })

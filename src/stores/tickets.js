@@ -20,12 +20,19 @@ function save(data) {
 }
 
 // Mapping statuts CSV → statuts internes
+// Accepte les clés originales ET normalisées (minuscules après normalizeCSVHeaders)
 const STATUS_MAP = {
   'New':         'open',
+  'new':         'open',
   'Open':        'open',
+  'open':        'open',
   'In Progress': 'in_progress',
+  'in_progress': 'in_progress',
+  'in progress': 'in_progress',
   'Resolved':    'resolved',
+  'resolved':    'resolved',
   'Closed':      'closed',
+  'closed':      'closed',
 }
 
 export const useTicketsStore = defineStore('tickets', () => {
@@ -80,38 +87,47 @@ export const useTicketsStore = defineStore('tickets', () => {
   function syncFromFeuil2(feuil2Rows) {
     const converted = feuil2Rows.map(row => {
       // Parser les assets depuis le champ Items (JSON array de strings)
+      // Clés normalisées : Items → items
       let assets = []
       try {
-        const raw  = row['Items'] || row['items'] || '[]'
+        const raw  = row['items'] || row['Items'] || '[]'
         const tags = JSON.parse(raw)
         assets = tags.map(tag => ({ id: tag, asset_tag: tag, name: tag }))
       } catch { /* Items mal formé, on ignore */ }
 
       // Construire l'ISO date depuis Date + Heure du CSV
+      // Clés normalisées : Date → date, Heure → heure
       let created_at = new Date().toISOString()
       try {
-        const [d, m, y] = (row['Date'] || '').split('/')
-        const heure     = row['Heure'] || '00:00'
+        const [d, m, y] = (row['date'] || row['Date'] || '').split('/')
+        const heure     = row['heure'] || row['Heure'] || '00:00'
         if (d && m && y) created_at = new Date(`${y}-${m}-${d}T${heure}:00`).toISOString()
       } catch { /* date invalide */ }
 
-      const rawStatus = row['Status'] || row['status'] || ''
+      const rawStatus = row['status'] || row['Status'] || ''
       const status    = STATUS_MAP[rawStatus] || 'open'
 
+      // Les clés sont normalisées par normalizeCSVHeaders() :
+      // Titre → titre, Num_Ticket → num_ticket, Description → description,
+      // Status → status, Priority → priority, Items → items, Date → date, Heure → heure
+      const numTicket = row['num_ticket'] || row['Num_Ticket'] || row['_id']
       return {
-        id:           Number(row['Num_Ticket'] || row['_id'] || Date.now()),
-        title:        row['Titre']       || row['title']       || `Ticket #${row['Num_Ticket']}`,
-        description:  row['Description'] || row['description'] || '',
+        id:           Number(numTicket) || Date.now(),
+        title:        row['titre']       || row['Titre']       || `Ticket #${numTicket}`,
+        description:  row['description'] || row['Description'] || '',
         status,
-        priority:     row['Priority']    || row['priority']    || 'Medium',
+        priority:     row['priority']    || row['Priority']    || 'Medium',
         assets,
         created_at,
         _from_feuil2: true,
       }
     })
 
-    tickets.value = converted
-    save(converted)
+    // Fusionner : conserver les tickets créés depuis le frontoffice (_from_feuil2 absent)
+    // et remplacer uniquement les tickets issus du CSV (_from_feuil2: true)
+    const frontofficeTickets = tickets.value.filter(t => !t._from_feuil2)
+    tickets.value = [...converted, ...frontofficeTickets]
+    save(tickets.value)
     return converted.length
   }
 

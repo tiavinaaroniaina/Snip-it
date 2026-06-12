@@ -5,10 +5,6 @@
         <h1 class="page-title">Tableau Kanban</h1>
         <p class="page-subtitle">Gérez vos tickets par glisser-déposer</p>
       </div>
-      <router-link to="/front/ticket" class="btn btn-primary">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Ajouter 1 ticket
-      </router-link>
     </div>
 
     <!-- Kanban Board -->
@@ -29,6 +25,16 @@
         </div>
 
         <div class="column-body">
+          <!-- Bouton Ajouter Ticket (Uniquement dans la 1ère colonne 'open') -->
+          <router-link 
+            v-if="col.id === 'open'" 
+            to="/front/ticket" 
+            class="btn-add-inline mb-4"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Ajouter un ticket
+          </router-link>
+
           <div 
             v-for="ticket in getTicketsByStatus(col.id)" 
             :key="ticket.id" 
@@ -264,6 +270,28 @@ function priorityLabel(p) {
 .column-body {
   padding: 12px;
   flex: 1;
+}
+
+.btn-add-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text2);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.btn-add-inline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accentbg);
 }
 
 .ticket-card {
