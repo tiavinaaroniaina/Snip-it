@@ -6,15 +6,15 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
 export const useSettingsStore = defineStore('settings', () => {
   const kanbanColors = ref({
-    open: '#f8f9fa',
-    in_progress: '#fff9db',
-    resolved: '#ebfbee'
+    vaovao: '#f8f9fa',
+    efa_manao: '#fff9db',
+    vita: '#ebfbee'
   })
   
   const statusNames = ref({
-    open: 'Nouveau',
-    in_progress: 'En cours',
-    resolved: 'Terminé'
+    vaovao: 'Nouveau',
+    efa_manao: 'En cours',
+    vita: 'Terminé'
   })
 
   const loading = ref(false)

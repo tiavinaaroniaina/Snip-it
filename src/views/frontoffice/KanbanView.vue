@@ -13,21 +13,21 @@
         v-for="col in columns" 
         :key="col.id" 
         class="kanban-column"
-        :style="{ backgroundColor: settings.kanbanColors[col.id] + '15' }"
+        :style="{ backgroundColor: statusColorKanban(col.id) + '15' }"
         @dragover.prevent
         @drop="onDrop($event, col.id)"
       >
-        <div class="column-header" :style="{ borderTopColor: settings.kanbanColors[col.id] }">
+        <div class="column-header" :style="{ borderTopColor: statusColorKanban(col.id) }">
           <h3 class="column-title">
-            {{ settings.statusNames[col.id] || col.label }}
+            {{ col.label }}
             <span class="column-count">{{ getTicketsByStatus(col.id).length }}</span>
           </h3>
         </div>
 
         <div class="column-body">
-          <!-- Bouton Ajouter Ticket (Uniquement dans la 1ère colonne 'open') -->
+          <!-- Bouton Ajouter Ticket (Uniquement dans la 1ère colonne 'vaovao') -->
           <router-link 
-            v-if="col.id === 'open'" 
+            v-if="col.id === 'vaovao'" 
             to="/front/ticket" 
             class="btn-add-inline mb-4"
           >
@@ -77,8 +77,8 @@
           <div class="grid-2 mt-4">
             <div>
               <label class="form-label">Statut</label>
-              <span class="badge text-capitalize" :class="`badge-${statusColor(selectedTicket.status)}`">
-                {{ settings.statusNames[selectedTicket.status] || selectedTicket.status }}
+              <span class="badge text-capitalize" :class="`badge-${statusColorKanban(selectedTicket.status)}`">
+                {{ statusLabelKanban(selectedTicket.status) }}
               </span>
             </div>
             <div>
@@ -128,6 +128,13 @@
         </div>
       </div>
     </div>
+
+    <!-- CoutTicketModal -->
+    <CoutTicketModal 
+      :show="showCostModal" 
+      @validate="handleCostValidation" 
+      @cancel="handleCostCancel" 
+    />
   </div>
 </template>
 
@@ -135,33 +142,37 @@
 import { ref, onMounted } from 'vue'
 import { useDbStore } from '@/stores/db'
 import { useSettingsStore } from '@/stores/settings'
+import CoutTicketModal from '@/components/CoutTicketModal.vue'
+import { distributeCostToAssets, apiPostTicketCouts } from '@/services/coutService' // Import coutService
+import { apiUpdateFeuil2TicketStatus } from '@/services/feuil2' // Import for updating feuil2 status
 
 const db = useDbStore()
 const settings = useSettingsStore()
 
 const columns = [
-  { id: 'open', label: 'Nouveau' },
-  { id: 'in_progress', label: 'En cours' },
-  { id: 'resolved', label: 'Terminé' }
+  { id: 'vaovao', label: 'Nouveau' },
+  { id: 'efa_manao', label: 'En cours' },
+  { id: 'vita', label: 'Terminé' }
 ]
 
 const selectedTicket = ref(null)
 const draggedTicket = ref(null)
+
+// For the cost input modal
+const showCostModal = ref(false)
+const ticketForCost = ref(null)
+const originalTicketStatus = ref(null) // To revert status if cost input is cancelled
 
 // Pour le dialogue de changement de statut
 const pendingChange = ref(null)
 const resolutionNote = ref('')
 
 onMounted(async () => {
-  await settings.fetchSettings()
+  await settings.load()
 })
 
 function getTicketsByStatus(status) {
-  // Mapper certains statuts vers les colonnes si nécessaire (ex: closed -> resolved)
-  return db.tickets.filter(t => {
-    if (status === 'resolved') return t.status === 'resolved' || t.status === 'closed'
-    return t.status === status
-  })
+  return db.tickets.filter(t => t.status === status)
 }
 
 function onDragStart(e, ticket) {
@@ -169,19 +180,77 @@ function onDragStart(e, ticket) {
   e.dataTransfer.effectAllowed = 'move'
 }
 
-function onDrop(e, newStatus) {
+async function onDrop(e, newStatus) {
   const ticket = draggedTicket.value
   if (!ticket || ticket.status === newStatus) return
 
-  // Si passage à "resolved", demander une note
-  if (newStatus === 'resolved' || newStatus === 'closed') {
+  // Store the original status in case of cancellation
+  originalTicketStatus.value = ticket.status 
+
+  // If dropping into 'vita' column, show the cost input modal
+  if (newStatus === 'vita') {
+    ticketForCost.value = { ...ticket } // Create a copy to avoid direct mutation
+    showCostModal.value = true
+    return
+  }
+
+  // Otherwise, proceed with the normal status change (including resolution note for 'resolved'/'closed')
+  // We need to map 'vita' back to 'resolved' for the existing logic if needed
+  const internalStatus = newStatus === 'vita' ? 'resolved' : newStatus; // This mapping might be adjusted
+
+  // If passage to "resolved", ask for a note (assuming "resolved" is a different status than "vita" for this logic)
+  if (internalStatus === 'resolved' || internalStatus === 'closed') {
     pendingChange.value = { ticketId: ticket.id, status: 'resolved' }
     resolutionNote.value = ''
     return
   }
-
-  // Sinon changement direct
+  
+  // If no special handling, just update status
   db.updateTicketStatus(ticket.id, newStatus)
+}
+
+async function handleCostValidation(cost) {
+  if (ticketForCost.value) {
+    try {
+      // 1. Distribuer le coût aux assets
+      const distributedCosts = await distributeCostToAssets(ticketForCost.value, cost);
+
+      // 2. Insérer les coûts dans la base de données via le backend
+      if (distributedCosts.length > 0) {
+        await apiPostTicketCouts(distributedCosts);
+        console.log(`Coûts insérés pour le ticket ${ticketForCost.value.id}`);
+      } else {
+        console.warn(`Aucun coût à insérer pour le ticket ${ticketForCost.value.id} (pas d'assets ou assets sans catégorie)`);
+      }
+
+      // 3. Mettre à jour le statut du ticket dans le backend SQLite
+      await apiUpdateFeuil2TicketStatus(ticketForCost.value.id, 'vita');
+      console.log(`Statut du ticket ${ticketForCost.value.id} mis à jour à 'vita' dans SQLite`);
+
+      // 4. Mettre à jour le statut du ticket dans le store Pinia (localStorage)
+      db.updateTicketStatus(ticketForCost.value.id, 'vita');
+      console.log(`Statut du ticket ${ticketForCost.value.id} mis à jour à 'vita' dans le store local`);
+
+    } catch (error) {
+      console.error("Erreur lors de la validation du coût du ticket:", error);
+      alert("Une erreur est survenue lors de l'enregistrement du coût. Le statut n'a pas été mis à jour.");
+      // Optionnel: Revert the ticket status if an error occurs
+      // db.updateTicketStatus(ticketForCost.value.id, originalTicketStatus.value);
+    }
+  }
+  showCostModal.value = false
+  ticketForCost.value = null
+  originalTicketStatus.value = null
+}
+
+function handleCostCancel() {
+  // If cancelled, the ticket should theoretically revert to its original column
+  // Since we haven't updated the status yet, it implicitly stays in the original column.
+  showCostModal.value = false
+  ticketForCost.value = null
+  originalTicketStatus.value = null
+  // No need to revert status here as it was never updated.
+  // The drag-and-drop visually moves it, but the data store isn't updated until validation.
 }
 
 function confirmChange() {
@@ -209,9 +278,14 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
 }
 
-function statusColor(s) {
-  const map = { open: 'red', in_progress: 'yellow', resolved: 'green', closed: 'gray' }
+function statusColorKanban(s) {
+  const map = { vaovao: 'red', efa_manao: 'yellow', vita: 'green' }
   return map[s] || 'gray'
+}
+
+function statusLabelKanban(s) {
+  const map = { vaovao: 'Nouveau', efa_manao: 'En cours', vita: 'Terminé' }
+  return map[s] || s
 }
 
 function priorityColor(p) {

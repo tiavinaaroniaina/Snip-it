@@ -10,6 +10,7 @@ import BOReset    from '@/views/backoffice/ResetView.vue'
 import BOTickets  from '@/views/backoffice/TicketsView.vue'
 import BOFeuil2   from '@/views/backoffice/Feuil2View.vue'
 import BOKanbanConfig from '@/views/backoffice/KanbanSettingsView.vue'
+import BOCoutParCategorie from '@/views/backoffice/CoutParCategorie.vue' // New import
 
 // Frontoffice
 import FOLayout   from '@/views/frontoffice/LayoutFO.vue'
@@ -37,6 +38,7 @@ const routes = [
       { path: 'tickets',   component: BOTickets, meta: { title: 'Tickets' } },
       { path: 'feuil2',    component: BOFeuil2,  meta: { title: 'Feuil 2 — SQLite' } },
       { path: 'settings',  component: BOKanbanConfig, meta: { title: 'Configuration Kanban' } },
+      { path: 'couts-categorie', component: BOCoutParCategorie, meta: { title: 'Coût par Catégorie' } }, // New route
     ]
   },
 

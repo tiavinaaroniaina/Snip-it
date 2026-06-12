@@ -40,3 +40,22 @@ export async function apiClearFeuil2() {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }
+
+/**
+ * Met à jour le statut d'un ticket spécifique dans la table feuil2 (SQLite).
+ * @param {number} ticketId - L'ID du ticket à mettre à jour.
+ * @param {string} status - Le nouveau statut du ticket.
+ * @returns {Promise<Object>} Réponse du backend.
+ */
+export async function apiUpdateFeuil2TicketStatus(ticketId, status) {
+  const res = await fetch(`${BASE}/ticket-status/${ticketId}`, {
+    method:  'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ status }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+  return res.json()
+}

@@ -79,6 +79,14 @@ function initTables() {
       key   TEXT PRIMARY KEY,
       value TEXT
     );
+    CREATE TABLE IF NOT EXISTS ticket_couts (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      id_ticket   INTEGER NOT NULL,
+      id_asset    INTEGER NOT NULL,
+      id_categorie INTEGER NOT NULL,
+      cout        REAL NOT NULL,
+      created_at  TEXT    DEFAULT (datetime('now','localtime'))
+    );
     -- Initialisation par défaut si vide
     INSERT OR IGNORE INTO settings (key, value) VALUES ('kanban_colors', '{"open":"#f8f9fa","in_progress":"#fff9db","resolved":"#ebfbee"}');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('status_names', '{"open":"Nouveau","in_progress":"En cours","resolved":"Terminé"}');
@@ -221,6 +229,77 @@ app.delete('/api/feuil2', (req, res) => {
     db.run('DELETE FROM feuil2_meta')
     saveDb()
     res.json({ success: true })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── PUT /api/feuil2/ticket-status/:id ─────────────────
+app.put('/api/feuil2/ticket-status/:id', (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id)
+    const { status } = req.body
+
+    if (isNaN(ticketId) || !status) {
+      return res.status(400).json({ error: 'ID du ticket ou statut manquant/invalide' })
+    }
+
+    const row = queryGet('SELECT data FROM feuil2 WHERE id = ?', [ticketId])
+    if (!row) {
+      return res.status(404).json({ error: 'Ticket non trouvé' })
+    }
+
+    let ticketData = JSON.parse(row.data)
+    ticketData.status = status // Update the status
+    
+    db.run('UPDATE feuil2 SET data = ? WHERE id = ?', [JSON.stringify(ticketData), ticketId])
+    saveDb()
+    res.json({ success: true, message: `Statut du ticket ${ticketId} mis à jour à ${status}` })
+
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── POST /api/ticket-couts ──────────────────────────────
+app.post('/api/ticket-couts', (req, res) => {
+  try {
+    const costs = req.body.costs
+    if (!Array.isArray(costs) || costs.length === 0) {
+      return res.status(400).json({ error: '"costs" doit être un tableau non vide' })
+    }
+
+    db.run('BEGIN TRANSACTION')
+    try {
+      const stmt = db.prepare(
+        'INSERT INTO ticket_couts (id_ticket, id_asset, id_categorie, cout) VALUES (?, ?, ?, ?)'
+      )
+      costs.forEach(cost => {
+        stmt.run([cost.id_ticket, cost.id_asset, cost.id_categorie, cost.cout])
+      })
+      stmt.free()
+      db.run('COMMIT')
+      saveDb()
+      res.json({ success: true, count: costs.length })
+    } catch (e) {
+      db.run('ROLLBACK')
+      throw e
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── GET /api/ticket-couts/aggregated-by-category ────────
+app.get('/api/ticket-couts/aggregated-by-category', (req, res) => {
+  try {
+    const rows = queryAll(`
+      SELECT id_categorie, SUM(cout) as total_cout
+      FROM ticket_couts
+      GROUP BY id_categorie
+      ORDER BY total_cout DESC
+    `)
+    res.json({ success: true, data: rows })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
