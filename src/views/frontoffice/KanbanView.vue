@@ -58,6 +58,14 @@
       </div>
     </div>
 
+    <!-- Modal Coût (apparait quand on drop un ticket sur "Terminé") -->
+    <CoutTicketModal
+      v-if="coutTicket"
+      :ticket="coutTicket"
+      @validate="onCoutValidated"
+      @close="onCoutCancelled"
+    />
+
     <!-- Modal Détails Ticket -->
     <div v-if="selectedTicket" class="modal-overlay" @click="selectedTicket = null">
       <div class="modal-content card" @click.stop>
@@ -135,6 +143,7 @@
 import { ref, onMounted } from 'vue'
 import { useDbStore } from '@/stores/db'
 import { useSettingsStore } from '@/stores/settings'
+import CoutTicketModal from '@/components/CoutTicketModal.vue'
 
 const db = useDbStore()
 const settings = useSettingsStore()
@@ -147,13 +156,15 @@ const columns = [
 
 const selectedTicket = ref(null)
 const draggedTicket = ref(null)
+const coutTicket = ref(null)
 
 // Pour le dialogue de changement de statut
 const pendingChange = ref(null)
 const resolutionNote = ref('')
+const savingCost = ref(false)
 
 onMounted(async () => {
-  await settings.fetchSettings()
+  await settings.load()
 })
 
 function getTicketsByStatus(status) {
@@ -173,15 +184,41 @@ function onDrop(e, newStatus) {
   const ticket = draggedTicket.value
   if (!ticket || ticket.status === newStatus) return
 
-  // Si passage à "resolved", demander une note
+  if ((newStatus === 'resolved' || newStatus === 'closed') && ticket.assets?.length) {
+    coutTicket.value = ticket
+    return
+  }
+
   if (newStatus === 'resolved' || newStatus === 'closed') {
     pendingChange.value = { ticketId: ticket.id, status: 'resolved' }
     resolutionNote.value = ''
     return
   }
 
-  // Sinon changement direct
   db.updateTicketStatus(ticket.id, newStatus)
+}
+
+async function onCoutValidated({ totalCost, items }) {
+  if (!coutTicket.value) return
+  savingCost.value = true
+  try {
+    const ticketId = coutTicket.value.id
+    await db.commitTicketCosts(ticketId, totalCost, items)
+    coutTicket.value = null
+    draggedTicket.value = null
+    db.updateTicketStatus(ticketId, 'resolved')
+  } catch (e) {
+    alert('Erreur lors de l\'enregistrement des coûts : ' + e.message)
+    coutTicket.value = null
+    draggedTicket.value = null
+  } finally {
+    savingCost.value = false
+  }
+}
+
+function onCoutCancelled() {
+  coutTicket.value = null
+  draggedTicket.value = null
 }
 
 function confirmChange() {

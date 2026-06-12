@@ -77,22 +77,30 @@ export const useTicketsStore = defineStore('tickets', () => {
   }
 
   /**
-   * Synchronise les tickets depuis les données feuil2 (SQLite).
-   * Convertit chaque ligne CSV → format ticket interne.
-   * Colonnes : Num_Ticket, Date, Heure, Titre, Description, Status, Priority, Items
-   *
-   * @param {Array} feuil2Rows - lignes issues de db.feuil2
-   * @returns {number} nombre de tickets synchronisés
+   * @param {Array}  feuil2Rows  - lignes issues de db.feuil2
+   * @param {Array}  allAssets   - (optionnel) assets du store pour enrichir les catégories
+   * @returns {number}
    */
-  function syncFromFeuil2(feuil2Rows) {
+  function syncFromFeuil2(feuil2Rows, allAssets = []) {
+    const catMap = Object.fromEntries(
+      allAssets.filter(a => a.category_id).map(a => [a.asset_tag || a.id, a.category_id])
+    )
+
     const converted = feuil2Rows.map(row => {
       // Parser les assets depuis le champ Items (JSON array de strings)
-      // Clés normalisées : Items → items
       let assets = []
       try {
         const raw  = row['items'] || row['Items'] || '[]'
         const tags = JSON.parse(raw)
-        assets = tags.map(tag => ({ id: tag, asset_tag: tag, name: tag }))
+        assets = tags.map(tag => {
+          const key = String(tag)
+          return {
+            id:         catMap[key] ? `${catMap[key]}-${key}` : key,
+            asset_tag:  tag,
+            name:       tag,
+            category_id: catMap[key] || null,
+          }
+        })
       } catch { /* Items mal formé, on ignore */ }
 
       // Construire l'ISO date depuis Date + Heure du CSV

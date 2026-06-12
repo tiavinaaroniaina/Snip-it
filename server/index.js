@@ -79,9 +79,16 @@ function initTables() {
       key   TEXT PRIMARY KEY,
       value TEXT
     );
+    CREATE TABLE IF NOT EXISTS ticket_couts (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      id_ticket    INTEGER NOT NULL,
+      id_asset     INTEGER NOT NULL,
+      id_categorie INTEGER NOT NULL,
+      cout         REAL    NOT NULL
+    );
     -- Initialisation par défaut si vide
     INSERT OR IGNORE INTO settings (key, value) VALUES ('kanban_colors', '{"open":"#f8f9fa","in_progress":"#fff9db","resolved":"#ebfbee"}');
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('status_names', '{"open":"Nouveau","in_progress":"En cours","resolved":"Terminé"}');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('status_names',  '{"open":"Nouveau","in_progress":"En cours","resolved":"Terminé"}');
   `)
   saveDb()
 }
@@ -221,6 +228,67 @@ app.delete('/api/feuil2', (req, res) => {
     db.run('DELETE FROM feuil2_meta')
     saveDb()
     res.json({ success: true })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── POST /api/ticket-couts/commit — enregistrer les coûts ──
+app.post('/api/ticket-couts/commit', (req, res) => {
+  try {
+    const { ticketId, totalCost, items } = req.body
+    if (!ticketId || typeof totalCost !== 'number' || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'ticketId, totalCost et items[] requis' })
+    }
+
+    const sum = items.reduce((s, i) => s + (Number(i.cout) || 0), 0)
+    if (Math.abs(sum - totalCost) > 0.01) {
+      return res.status(400).json({ error: `La somme des coûts (${sum}) ne correspond pas au coût total (${totalCost})` })
+    }
+
+    db.run('BEGIN TRANSACTION')
+    try {
+      const stmt = db.prepare(
+        'INSERT INTO ticket_couts (id_ticket, id_asset, id_categorie, cout) VALUES (?, ?, ?, ?)'
+      )
+      items.forEach(i => {
+        stmt.run([
+          Number(ticketId),
+          Number(i.id_asset),
+          Number(i.id_categorie),
+          Number(i.cout),
+        ])
+      })
+      stmt.free()
+      db.run('COMMIT')
+      saveDb()
+      res.json({ success: true, count: items.length })
+    } catch (e) { db.run('ROLLBACK'); throw e }
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── GET /api/ticket-couts/par-categorie — agrégation ──
+app.get('/api/ticket-couts/par-categorie', (req, res) => {
+  try {
+    const rows = queryAll(
+      `SELECT id_categorie, SUM(cout) as total
+       FROM ticket_couts
+       GROUP BY id_categorie`
+    )
+    res.json(rows)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── GET /api/ticket-couts — toutes les lignes ──────────
+app.get('/api/ticket-couts', (req, res) => {
+  try {
+    res.json(queryAll(
+      'SELECT * FROM ticket_couts ORDER BY id DESC'
+    ))
   } catch (e) {
     res.status(500).json({ error: e.message })
   }

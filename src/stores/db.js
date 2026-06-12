@@ -9,6 +9,7 @@ import { computed }    from 'vue'
 import { useAssetsStore }  from '@/stores/assets'
 import { useTicketsStore } from '@/stores/tickets'
 import { useFeuil2Store }  from '@/stores/feuil2'
+import { commitTicketCout as apiCommitTicketCout } from '@/services/coutService'
 
 export const useDbStore = defineStore('db', () => {
   const assetsStore  = useAssetsStore()
@@ -42,11 +43,15 @@ export const useDbStore = defineStore('db', () => {
   const loadFeuil2          = ()     => feuil2Store.load()
   const importFeuil2        = (rows) => feuil2Store.importRows(rows)
   const clearFeuil2         = ()     => feuil2Store.clear()
-  const syncFeuil2ToTickets = (rows) => ticketsStore.syncFromFeuil2(rows ?? feuil2Store.rows)
+  const syncFeuil2ToTickets = (rows) => ticketsStore.syncFromFeuil2(rows ?? feuil2Store.rows, assetsStore.assets)
 
   const createTicket       = (...a) => ticketsStore.createTicket(...a)
   const updateTicketStatus = (...a) => ticketsStore.updateTicketStatus(...a)
   const deleteTicket       = (...a) => ticketsStore.deleteTicket(...a)
+
+  async function commitTicketCosts(ticketId, totalCost, items) {
+    await apiCommitTicketCout({ ticketId, totalCost, items })
+  }
 
   async function resetAll() {
     assetsStore.clearAll()
@@ -66,6 +71,7 @@ export const useDbStore = defineStore('db', () => {
     importFeuil2, loadFeuil2, clearFeuil2, syncFeuil2ToTickets,
     feuil2Loading, feuil2Error,
     createTicket, updateTicketStatus, deleteTicket,
+    commitTicketCosts,
     resetAll,
   }
 })
