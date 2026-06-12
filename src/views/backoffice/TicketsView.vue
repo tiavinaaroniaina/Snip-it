@@ -86,7 +86,7 @@
           <div v-if="selected.assets?.length" class="assets-chips">
             <span class="chip" v-for="a in selected.assets" :key="a.id">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/></svg>
-              {{ a.name || a.asset_tag }}
+              {{ a.asset_tag }}
             </span>
           </div>
           <p class="text-muted text-sm" v-else>Aucun élément associé.</p>
