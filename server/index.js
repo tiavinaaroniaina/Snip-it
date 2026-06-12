@@ -10,6 +10,7 @@ const path     = require('path')
 const fs       = require('fs')
 const multer   = require('multer')
 const Papa     = require('papaparse')
+const crypto   = require('crypto')
 
 let initSqlJs
 try {
@@ -84,12 +85,33 @@ function initTables() {
       id_ticket    INTEGER NOT NULL,
       id_asset     INTEGER NOT NULL,
       id_categorie INTEGER NOT NULL,
-      cout         REAL    NOT NULL
+      cout         REAL    NOT NULL,
+      groupe_id    TEXT
     );
     -- Initialisation par défaut si vide
     INSERT OR IGNORE INTO settings (key, value) VALUES ('kanban_colors', '{"open":"#f8f9fa","in_progress":"#fff9db","resolved":"#ebfbee"}');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('status_names',  '{"open":"Nouveau","in_progress":"En cours","resolved":"Terminé"}');
   `)
+
+  // Migration: Ajouter la colonne groupe_id si elle n'existe pas
+  const columnInfo = queryAll("PRAGMA table_info(ticket_couts);")
+  const columnExists = columnInfo.some(col => col.name === 'groupe_id')
+  if (!columnExists) {
+    db.run(`ALTER TABLE ticket_couts ADD COLUMN groupe_id TEXT;`)
+  }
+
+  // Backfill: Pour les lignes existantes sans groupe_id, en créer un par id_ticket
+  const ticketsWithoutGroupId = queryAll(
+    `SELECT DISTINCT id_ticket FROM ticket_couts WHERE groupe_id IS NULL`
+  )
+  ticketsWithoutGroupId.forEach(({ id_ticket }) => {
+    const newGroupId = crypto.randomUUID()
+    db.run(
+      `UPDATE ticket_couts SET groupe_id = ? WHERE id_ticket = ? AND groupe_id IS NULL`,
+      [newGroupId, id_ticket]
+    )
+  })
+
   saveDb()
 }
 
@@ -98,8 +120,8 @@ function queryAll(sql, params = []) {
   const results = []
   stmt.bind(params)
   while (stmt.step()) results.push(stmt.getAsObject())
-  stmt.free()
-  return results
+  stmt.free() // Clean up the statement
+  return results // Ensure results are returned
 }
 
 function queryGet(sql, params = []) {
@@ -236,9 +258,9 @@ app.delete('/api/feuil2', (req, res) => {
 // ── POST /api/ticket-couts/commit — enregistrer les coûts ──
 app.post('/api/ticket-couts/commit', (req, res) => {
   try {
-    const { ticketId, totalCost, items } = req.body
-    if (!ticketId || typeof totalCost !== 'number' || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'ticketId, totalCost et items[] requis' })
+    const { ticketId, totalCost, items, groupeId } = req.body
+    if (!ticketId || typeof totalCost !== 'number' || !Array.isArray(items) || items.length === 0 || !groupeId) {
+      return res.status(400).json({ error: 'ticketId, totalCost, items[], et groupeId requis' })
     }
 
     const sum = items.reduce((s, i) => s + (Number(i.cout) || 0), 0)
@@ -249,7 +271,7 @@ app.post('/api/ticket-couts/commit', (req, res) => {
     db.run('BEGIN TRANSACTION')
     try {
       const stmt = db.prepare(
-        'INSERT INTO ticket_couts (id_ticket, id_asset, id_categorie, cout) VALUES (?, ?, ?, ?)'
+        'INSERT INTO ticket_couts (id_ticket, id_asset, id_categorie, cout, groupe_id) VALUES (?, ?, ?, ?, ?)'
       )
       items.forEach(i => {
         stmt.run([
@@ -257,6 +279,7 @@ app.post('/api/ticket-couts/commit', (req, res) => {
           Number(i.id_asset),
           Number(i.id_categorie),
           Number(i.cout),
+          groupeId,
         ])
       })
       stmt.free()
@@ -289,6 +312,48 @@ app.get('/api/ticket-couts', (req, res) => {
     res.json(queryAll(
       'SELECT * FROM ticket_couts ORDER BY id DESC'
     ))
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── DELETE /api/ticket-couts/cancel-last — annuler le dernier coût ──
+app.delete('/api/ticket-couts/cancel-last', (req, res) => {
+  try {
+    const { ticketId } = req.body
+    if (!ticketId) {
+      return res.status(400).json({ error: 'ticketId requis' })
+    }
+
+    db.run('BEGIN TRANSACTION')
+    try {
+      // Trouver le dernier groupe_id pour ce ticket
+      const lastGroup = queryGet(
+        `SELECT groupe_id FROM ticket_couts
+         WHERE id_ticket = ? AND groupe_id IS NOT NULL
+         ORDER BY id DESC LIMIT 1`,
+        [ticketId]
+      )
+
+      if (lastGroup && lastGroup.groupe_id) {
+        // Supprimer toutes les lignes associées à ce groupe_id et id_ticket
+        const stmt = db.prepare(
+          `DELETE FROM ticket_couts
+           WHERE id_ticket = ? AND groupe_id = ?`
+        )
+        stmt.run([ticketId, lastGroup.groupe_id])
+        stmt.free()
+        db.run('COMMIT')
+        saveDb()
+        res.json({ success: true, deletedGroupId: lastGroup.groupe_id })
+      } else {
+        db.run('ROLLBACK')
+        res.status(404).json({ error: 'Aucun groupe de coûts trouvé pour ce ticket.' })
+      }
+    } catch (e) {
+      db.run('ROLLBACK')
+      throw e
+    }
   } catch (e) {
     res.status(500).json({ error: e.message })
   }

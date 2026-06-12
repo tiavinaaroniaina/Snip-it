@@ -6,9 +6,9 @@ import axios from 'axios'
 
 const API = '/api/ticket-couts'
 
-export async function commitTicketCout({ ticketId, totalCost, items }) {
+export async function commitTicketCout({ ticketId, totalCost, items, groupeId }) {
   const res = await axios.post(`${API}/commit`, {
-    ticketId, totalCost, items
+    ticketId, totalCost, items, groupeId
   })
   return res.data
 }
@@ -20,5 +20,10 @@ export async function fetchCoutsParCategorie() {
 
 export async function fetchAllCouts() {
   const res = await axios.get(API)
+  return res.data
+}
+
+export async function annulerDernierCout(ticketId) {
+  const res = await axios.delete(`${API}/cancel-last`, { data: { ticketId } })
   return res.data
 }

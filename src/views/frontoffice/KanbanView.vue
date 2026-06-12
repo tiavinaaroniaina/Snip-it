@@ -136,6 +136,15 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal Confirmation Rétrogradation -->
+    <ConfirmRetrogradeModal
+      :is-open="showRetrogradeModal"
+      :ticket-id="ticketToRetrograde?.id"
+      @confirm-reouverture="onConfirmReouverture"
+      @confirm-annulation="onConfirmAnnulation"
+      @close="onRetrogradeModalClose"
+    />
   </div>
 </template>
 
@@ -144,6 +153,7 @@ import { ref, onMounted } from 'vue'
 import { useDbStore } from '@/stores/db'
 import { useSettingsStore } from '@/stores/settings'
 import CoutTicketModal from '@/components/CoutTicketModal.vue'
+import ConfirmRetrogradeModal from '@/components/ConfirmRetrogradeModal.vue'
 
 const db = useDbStore()
 const settings = useSettingsStore()
@@ -162,6 +172,11 @@ const coutTicket = ref(null)
 const pendingChange = ref(null)
 const resolutionNote = ref('')
 const savingCost = ref(false)
+
+// Pour la rétrogradation des tickets
+const showRetrogradeModal = ref(false)
+const ticketToRetrograde = ref(null)
+const newStatusForRetrograde = ref(null)
 
 onMounted(async () => {
   await settings.load()
@@ -184,17 +199,28 @@ function onDrop(e, newStatus) {
   const ticket = draggedTicket.value
   if (!ticket || ticket.status === newStatus) return
 
+  // Case 1: Moving a resolved/closed ticket to a non-resolved status
+  if ((ticket.status === 'resolved' || ticket.status === 'closed') && (newStatus === 'open' || newStatus === 'in_progress')) {
+    ticketToRetrograde.value = ticket
+    newStatusForRetrograde.value = newStatus
+    showRetrogradeModal.value = true
+    return // Stop further processing for now, await modal action
+  }
+
+  // Existing logic for moving to resolved/closed with assets
   if ((newStatus === 'resolved' || newStatus === 'closed') && ticket.assets?.length) {
     coutTicket.value = ticket
     return
   }
 
+  // Existing logic for moving to resolved/closed without assets
   if (newStatus === 'resolved' || newStatus === 'closed') {
-    pendingChange.value = { ticketId: ticket.id, status: 'resolved' }
+    pendingChange.value = { ticketId: ticket.id, status: newStatus } // Use newStatus directly
     resolutionNote.value = ''
     return
   }
 
+  // Default: Simply update status
   db.updateTicketStatus(ticket.id, newStatus)
 }
 
@@ -203,10 +229,17 @@ async function onCoutValidated({ totalCost, items }) {
   savingCost.value = true
   try {
     const ticketId = coutTicket.value.id
-    await db.commitTicketCosts(ticketId, totalCost, items)
+    const groupeId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+    await db.commitTicketCosts(ticketId, totalCost, items, groupeId)
     coutTicket.value = null
     draggedTicket.value = null
-    db.updateTicketStatus(ticketId, 'resolved')
+
+    // Déterminer le statut final après la validation du coût
+    let targetStatus = 'resolved'
+    if (ticketToRetrograde.value && ticketToRetrograde.value.id === ticketId) {
+      targetStatus = newStatusForRetrograde.value
+    }
+    db.updateTicketStatus(ticketId, targetStatus)
   } catch (e) {
     alert('Erreur lors de l\'enregistrement des coûts : ' + e.message)
     coutTicket.value = null
@@ -219,6 +252,43 @@ async function onCoutValidated({ totalCost, items }) {
 function onCoutCancelled() {
   coutTicket.value = null
   draggedTicket.value = null
+}
+
+async function onConfirmReouverture(ticketId) {
+  // Re-use CoutTicketModal for reopening cost
+  // Need to find the actual ticket object to pass it
+  const ticket = db.tickets.find(t => t.id === ticketId)
+  if (ticket) {
+    coutTicket.value = ticket
+  }
+  showRetrogradeModal.value = false
+  // The onCoutValidated function will handle the actual commit and status update
+  // after the user enters the cost for reopening.
+}
+
+async function onConfirmAnnulation(ticketId) {
+  try {
+    await db.annulerDernierCout(ticketId) // Call the new backend function
+    db.updateTicketStatus(ticketId, newStatusForRetrograde.value)
+  } catch (e) {
+    alert('Erreur lors de l\'annulation du dernier coût : ' + e.message)
+  } finally {
+    showRetrogradeModal.value = false
+    ticketToRetrograde.value = null
+    newStatusForRetrograde.value = null
+    draggedTicket.value = null // Reset dragged ticket if it was set
+  }
+}
+
+function onRetrogradeModalClose() {
+  showRetrogradeModal.value = false
+  // Revert ticket status back to resolved if the user just closed the modal
+  if (ticketToRetrograde.value) {
+    db.updateTicketStatus(ticketToRetrograde.value.id, 'resolved')
+  }
+  ticketToRetrograde.value = null
+  newStatusForRetrograde.value = null
+  draggedTicket.value = null // Reset dragged ticket if it was set
 }
 
 function confirmChange() {

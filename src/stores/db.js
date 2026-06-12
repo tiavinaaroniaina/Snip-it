@@ -9,7 +9,7 @@ import { computed }    from 'vue'
 import { useAssetsStore }  from '@/stores/assets'
 import { useTicketsStore } from '@/stores/tickets'
 import { useFeuil2Store }  from '@/stores/feuil2'
-import { commitTicketCout as apiCommitTicketCout } from '@/services/coutService'
+import { commitTicketCout as apiCommitTicketCout, annulerDernierCout as apiAnnulerDernierCout } from '@/services/coutService'
 
 export const useDbStore = defineStore('db', () => {
   const assetsStore  = useAssetsStore()
@@ -49,8 +49,12 @@ export const useDbStore = defineStore('db', () => {
   const updateTicketStatus = (...a) => ticketsStore.updateTicketStatus(...a)
   const deleteTicket       = (...a) => ticketsStore.deleteTicket(...a)
 
-  async function commitTicketCosts(ticketId, totalCost, items) {
-    await apiCommitTicketCout({ ticketId, totalCost, items })
+  async function commitTicketCosts(ticketId, totalCost, items, groupeId) {
+    await apiCommitTicketCout({ ticketId, totalCost, items, groupeId })
+  }
+
+  async function annulerDernierCout(ticketId) {
+    await apiAnnulerDernierCout(ticketId)
   }
 
   async function resetAll() {
@@ -72,6 +76,7 @@ export const useDbStore = defineStore('db', () => {
     feuil2Loading, feuil2Error,
     createTicket, updateTicketStatus, deleteTicket,
     commitTicketCosts,
+    annulerDernierCout,
     resetAll,
   }
 })
