@@ -105,17 +105,25 @@ export const useAssetsStore = defineStore('assets', () => {
     try {
       const assetData = await fetchAssets()
       const rows = (assetData.rows || []).map(a => ({
-        id:           a.id,
-        name:         a.name,
-        asset_tag:    a.asset_tag,
-        category:     a.category?.name    || '',
-        category_id:  a.category?.id      || null,
-        location:     a.location?.name    || '',
-        location_id:  a.location?.id      || null,
-        status:       a.status_label?.name || '',
-        model:        a.model?.name        || '',
-        serial:       a.serial             || '',
-        manufacturer: a.manufacturer?.name || '',
+        id:            a.id,
+        name:          a.name,
+        asset_tag:     a.asset_tag,
+        category:      a.category?.name     || '',
+        category_id:   a.category?.id       || null,
+        location:      a.location?.name     || '',
+        location_id:   a.location?.id       || null,
+        status:        a.status_label?.name || '',
+        model:         a.model?.name        || '',
+        serial:        a.serial             || '',
+        manufacturer:  a.manufacturer?.name || '',
+        company:       a.company?.name      || '',
+        company_id:    a.company?.id        || null,
+        department:    a.department?.name   || '',
+        department_id: a.department?.id     || null,
+        user:          a.assigned_to?.name  || '',
+        email:         a.assigned_to?.username || '',
+        purchase_date: a.purchase_date?.formatted || '',
+        purchase_cost: a.purchase_cost      || '',
       }))
       assets.value = rows
       save(KEYS.assets, rows)

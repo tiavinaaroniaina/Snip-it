@@ -35,66 +35,18 @@
           <input ref="fileAssets" type="file" accept=".csv" hidden @change="onFile($event, 'assets')" />
         </div>
 
-        <!-- Rapport de validation -->
-        <div v-if="validationReport && validationReport.hasIssues" class="validation-report mt-3">
-          <div class="validation-header" @click="showValidationReport = !showValidationReport">
-            <div class="flex-between">
-              <div class="flex gap-2">
-                <span class="badge" :class="validationReport.isValid ? 'badge-green' : 'badge-yellow'">
-                  {{ validationReport.isValid ? '✓ Format valide' : '⚠️ Problèmes détectés' }}
-                </span>
-                <span class="text-xs text-muted">{{ validationReport.totalIssues }} issue(s)</span>
-              </div>
-              <span class="text-xs text-accent">{{ showValidationReport ? '▲ masquer' : '▼ détails' }}</span>
-            </div>
-          </div>
-          
-          <div v-if="showValidationReport" class="validation-details">
-            <!-- Erreurs critiques -->
-            <div v-if="validationReport.errors.length" class="validation-section">
-              <div class="validation-title text-red">❌ Erreurs critiques</div>
-              <div v-for="err in validationReport.errors" :key="err.type" class="validation-item error">
-                <strong>{{ err.title }}</strong>
-                <p class="text-xs mt-1">{{ err.message }}</p>
-                <div v-if="err.details" class="text-xs text-muted mt-1">
-                  Détails: {{ err.details.join(', ') }}
-                </div>
-              </div>
-            </div>
-            
-            <!-- Avertissements -->
-            <div v-if="validationReport.warnings.length" class="validation-section">
-              <div class="validation-title text-yellow">⚠️ Avertissements</div>
-              <div v-for="warn in validationReport.warnings" :key="warn.type" class="validation-item warning">
-                <strong>{{ warn.title }}</strong>
-                <p class="text-xs mt-1">{{ warn.message }}</p>
-                <div v-if="warn.details && warn.details.length" class="text-xs text-muted mt-1">
-                  <div v-for="detail in warn.details.slice(0, 3)" :key="detail.line">
-                    • Ligne {{ detail.line }}: {{ detail.errors.join(', ') }}
-                  </div>
-                  <div v-if="warn.details.length > 3" class="mt-1">
-                    ... et {{ warn.details.length - 3 }} autre(s) ligne(s)
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Informations -->
-            <div class="validation-section">
-              <div class="validation-title text-blue">ℹ️ Informations</div>
-              <div class="validation-item info">
-                <strong>Colonnes trouvées:</strong>
-                <div class="cols-list mt-1">
-                  <span class="tag" v-for="col in validationReport.foundColumns" :key="col">{{ col }}</span>
-                </div>
-              </div>
-              <div v-if="validationReport.missingColumns.length" class="validation-item info mt-2">
-                <strong>Colonnes manquantes:</strong>
-                <div class="cols-list mt-1">
-                  <span class="tag tag-warning" v-for="col in validationReport.missingColumns" :key="col">{{ col }}</span>
-                </div>
-              </div>
-            </div>
+        <!-- ── Règle 1 : Colonnes manquantes → BLOQUER ── -->
+        <div v-if="assets1Validation && !assets1Validation.canImport" class="alert alert-danger mt-3">
+          <strong>❌ {{ assets1Validation.errorMessage }}</strong>
+          <p class="text-xs mt-2">Colonnes manquantes : <span class="mono">{{ assets1Validation.missingColumns.join(', ') }}</span></p>
+          <p class="text-xs mt-1 text-muted">L'import est annulé. Vérifiez que vous utilisez le bon fichier.</p>
+        </div>
+
+        <!-- ── Résumé de validation (Règle 4) ── -->
+        <div v-if="assets1Validation && assets1Validation.canImport && assets1Validation.skippedRows.length > 0" class="validation-summary mt-3">
+          <div class="validation-title">⚠ {{ assets1Validation.skippedRows.length }} ligne(s) seront ignorées</div>
+          <div v-for="row in assets1Validation.skippedRows" :key="row.line" class="skip-row">
+            <span v-for="err in row.errors" :key="err">Ligne {{ row.line }} : {{ err }}</span>
           </div>
         </div>
 
@@ -152,20 +104,37 @@
           </div>
         </div>
 
-        <!-- Résultat -->
+        <!-- ── Règle 4 : Résumé visuel après import ── -->
+        <div v-if="importSummary1.length" class="import-summary mt-3">
+          <div v-for="(line, i) in importSummary1" :key="i" :class="`summary-line ${line.type}`">
+            {{ line.text }}
+          </div>
+        </div>
+
+        <!-- Résultat simple -->
         <p v-if="msg1" :class="`text-sm mt-3 ${msg1.ok ? 'text-green' : 'text-red'}`">
           {{ msg1.text }}
         </p>
 
         <!-- Boutons -->
         <div class="flex gap-3 mt-4 flex-wrap">
-          <button class="btn btn-secondary" :disabled="!file1 || loading1" @click="importLocal">
+          <button
+            class="btn btn-secondary"
+            :disabled="!canImportAssets || loading1"
+            :title="!assets1Validation?.canImport ? 'Import bloqué : colonnes manquantes' : ''"
+            @click="importLocal"
+          >
             <span v-if="loading1 === 'local'" class="loader"></span>
             <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
             Enregistrer en local
           </button>
 
-          <button class="btn btn-primary" :disabled="!file1 || loading1" @click="importToSnipeIT">
+          <button
+            class="btn btn-primary"
+            :disabled="!canImportAssets || loading1"
+            :title="!assets1Validation?.canImport ? 'Import bloqué : colonnes manquantes' : ''"
+            @click="importToSnipeIT"
+          >
             <span v-if="loading1 === 'snipeit'" class="loader"></span>
             <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             Envoyer vers SnipeIT
@@ -187,7 +156,7 @@
         <div class="card-header">
           <div>
             <h3>Feuille 2 — SQLite</h3>
-            <p class="text-muted text-sm mt-1">Données locales uniquement (localStorage)</p>
+            <p class="text-muted text-sm mt-1">Données locales uniquement (SQLite)</p>
           </div>
           <span class="badge badge-green">SQLite</span>
         </div>
@@ -204,6 +173,28 @@
           <p v-if="!file2">Glissez votre CSV ici ou <span class="text-accent">cliquez</span></p>
           <p v-else class="text-green">{{ file2.name }} — {{ preview2.length }} lignes détectées</p>
           <input ref="fileFeuil2" type="file" accept=".csv" hidden @change="onFile($event, 'feuil2')" />
+        </div>
+
+        <!-- ── Règle 1 : Colonnes manquantes feuil2 ── -->
+        <div v-if="feuil2Validation && !feuil2Validation.canImport" class="alert alert-danger mt-3">
+          <strong>❌ {{ feuil2Validation.errorMessage }}</strong>
+          <p class="text-xs mt-2">Colonnes manquantes : <span class="mono">{{ feuil2Validation.missingColumns.join(', ') }}</span></p>
+        </div>
+
+        <!-- ── Résumé validation feuil2 ── -->
+        <div v-if="feuil2Validation && feuil2Validation.canImport && feuil2Validation.skippedRows.length > 0" class="validation-summary mt-3">
+          <div class="validation-title">⚠ {{ feuil2Validation.skippedRows.length }} ligne(s) seront ignorées</div>
+          <div v-for="row in feuil2Validation.skippedRows" :key="row.line" class="skip-row">
+            <span v-for="err in row.errors" :key="err">Ligne {{ row.line }} : {{ err }}</span>
+          </div>
+        </div>
+
+        <!-- Colonnes attendues feuil2 -->
+        <div class="expected-cols mt-3">
+          <p class="text-xs text-muted mb-2">Colonnes attendues :</p>
+          <div class="cols-list">
+            <span class="tag" v-for="c in feuil2Cols" :key="c">{{ c }}</span>
+          </div>
         </div>
 
         <div v-if="preview2.length" class="preview-block mt-4">
@@ -223,11 +214,22 @@
         </div>
 
         <div class="flex gap-3 mt-4">
-          <button class="btn btn-success" :disabled="!file2 || loading2" @click="importFeuil2">
+          <button
+            class="btn btn-success"
+            :disabled="!canImportFeuil2 || loading2"
+            @click="importFeuil2"
+          >
             <span v-if="loading2" class="loader"></span>
             <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
             Enregistrer en SQLite
           </button>
+        </div>
+
+        <!-- Règle 4 : résumé import feuil2 -->
+        <div v-if="importSummary2.length" class="import-summary mt-3">
+          <div v-for="(line, i) in importSummary2" :key="i" :class="`summary-line ${line.type}`">
+            {{ line.text }}
+          </div>
         </div>
 
         <p v-if="msg2" :class="`text-sm mt-3 ${msg2.ok ? 'text-green' : 'text-red'}`">
@@ -246,7 +248,6 @@
           <router-link to="/backoffice/feuil2" class="text-accent" style="margin-left:8px">Voir →</router-link>
         </div>
 
-        <!-- Backend SQLite non disponible -->
         <div v-else-if="!db.feuil2Error" class="backend-tip mt-4">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
           <span>Backend requis : <code>node server/index.js</code></span>
@@ -260,7 +261,7 @@
       <div v-if="history.length" class="table-wrap">
         <table>
           <thead>
-            <tr><th>Date</th><th>Fichier</th><th>Type</th><th>Créés</th><th>Erreurs</th><th>Statut</th></tr>
+            <tr><th>Date</th><th>Fichier</th><th>Type</th><th>Importées</th><th>Ignorées</th><th>Statut</th></tr>
           </thead>
           <tbody>
             <tr v-for="h in history" :key="h.id">
@@ -268,7 +269,7 @@
               <td>{{ h.file }}</td>
               <td><span class="tag">{{ h.type }}</span></td>
               <td class="text-green mono">{{ h.created }}</td>
-              <td class="text-red mono">{{ h.errors }}</td>
+              <td class="text-yellow mono">{{ h.skipped }}</td>
               <td><span :class="`badge badge-${h.ok ? 'green' : 'yellow'}`">{{ h.ok ? 'OK' : 'Partiel' }}</span></td>
             </tr>
           </tbody>
@@ -284,6 +285,12 @@ import { ref, computed } from 'vue'
 import { useDbStore } from '@/stores/db'
 import { fullImport } from '@/services/import'
 import { parseCSVFile } from '@/composables/useParseCSV'
+import {
+  validateAssetsFile,
+  validateFeuil2File,
+  ASSET_REQUIRED_COLUMNS,
+  FEUIL2_REQUIRED_COLUMNS,
+} from '@/services/importValidator'
 
 const db = useDbStore()
 
@@ -291,7 +298,7 @@ const dragging1 = ref(false)
 const dragging2 = ref(false)
 const file1 = ref(null)
 const file2 = ref(null)
-const preview1 = ref([])
+const preview1 = ref([])   // toutes les lignes parsées
 const preview2 = ref([])
 const loading1 = ref(false)
 const loading2 = ref(false)
@@ -304,11 +311,25 @@ const snipeitLog = ref([])
 const showLog    = ref(false)
 const snipeitProgress = ref({ active: false, step: '', pct: 0 })
 
-// Nouveaux états pour la validation
-const validationReport = ref(null)
-const showValidationReport = ref(false)
+// Résultats de validation
+const assets1Validation = ref(null)  // { canImport, missingColumns, validRows, skippedRows, summary }
+const feuil2Validation  = ref(null)
 
-const assetCols = ['asset_tag', 'serial', 'name', 'category', 'manufacturer', 'model', 'status', 'company', 'user', 'email', 'department', 'purchase_date', 'purchase_cost']
+// Résumé Règle 4 affiché après import
+const importSummary1 = ref([])
+const importSummary2 = ref([])
+
+const assetCols  = ASSET_REQUIRED_COLUMNS
+// Affichage avec la casse d'origine du fichier de référence
+const feuil2Cols = ['Num_Ticket', 'Date', 'Heure', 'Titre', 'Description', 'Status', 'Priority', 'Items']
+
+// Boutons actifs seulement si le fichier est valide (Règle 1)
+const canImportAssets = computed(() =>
+  file1.value && assets1Validation.value && assets1Validation.value.canImport
+)
+const canImportFeuil2 = computed(() =>
+  file2.value && feuil2Validation.value && feuil2Validation.value.canImport
+)
 
 const previewHeaders1 = computed(() =>
   preview1.value.length ? Object.keys(preview1.value[0]).slice(0, 6) : []
@@ -317,159 +338,55 @@ const previewHeaders2 = computed(() =>
   preview2.value.length ? Object.keys(preview2.value[0]).slice(0, 6) : []
 )
 
-// Fonction de validation détaillée
-async function validateCSVWithDetails(f) {
-  const report = {
-    isValid: true,
-    hasIssues: false,
-    totalIssues: 0,
-    errors: [],
-    warnings: [],
-    foundColumns: [],
-    missingColumns: [],
-    rowErrors: []
-  }
-  
-  try {
-    // Lire le fichier brut pour vérifier les colonnes originales
-    const readRawFile = () => {
-      return new Promise((resolve) => {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          const text = e.target.result
-          const firstLine = text.split('\n')[0]
-          const columns = firstLine.split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''))
-          resolve(columns)
-        }
-        reader.readAsText(f, 'UTF-8')
-      })
-    }
-    
-    const originalColumns = await readRawFile(f)
-    report.foundColumns = originalColumns
-    
-    const requiredColumns = [
-      'asset_tag', 'serial', 'name', 'category', 'manufacturer', 
-      'model', 'status', 'company', 'user', 'email', 
-      'department', 'purchase_date', 'purchase_cost'
-    ]
-    
-    // Vérifier les colonnes manquantes
-    report.missingColumns = requiredColumns.filter(col => 
-      !originalColumns.some(orig => orig.toLowerCase() === col.toLowerCase())
-    )
-    
-    if (report.missingColumns.length > 0) {
-      report.hasIssues = true
-      report.totalIssues += report.missingColumns.length
-      report.errors.push({
-        type: 'missing_columns',
-        title: 'Colonnes obligatoires manquantes',
-        message: `Le fichier ne contient pas toutes les colonnes requises. L'import peut échouer.`,
-        details: report.missingColumns
-      })
-    }
-    
-    // Parser le fichier pour valider les données
-    const rows = await parseCSVFile(f)
-    
-    // Valider chaque ligne
-    rows.forEach((row, index) => {
-      const lineErrors = []
-      
-      // Vérifier purchase_cost
-      if (row.purchase_cost && row.purchase_cost.toString().trim() !== '') {
-        const costStr = row.purchase_cost.toString().trim().replace(/\s/g, '').replace(',', '.')
-        const costValue = parseFloat(costStr)
-        if (isNaN(costValue)) {
-          lineErrors.push(`purchase_cost "${row.purchase_cost}" n'est pas un nombre`)
-        }
-      }
-      
-      // Vérifier purchase_date
-      if (row.purchase_date && row.purchase_date.toString().trim() !== '') {
-        const dateStr = row.purchase_date.toString().trim()
-        const parts = dateStr.split('/')
-        if (parts.length === 3) {
-          const day = parseInt(parts[0], 10)
-          const month = parseInt(parts[1], 10) - 1
-          const year = parseInt(parts[2], 10)
-          const date = new Date(year, month, day)
-          if (isNaN(date.getTime())) {
-            lineErrors.push(`purchase_date "${row.purchase_date}" n'est pas une date valide`)
-          }
-        } else {
-          lineErrors.push(`purchase_date "${row.purchase_date}" n'est pas une date valide`)
-        }
-      }
-      
-      if (lineErrors.length > 0) {
-        report.rowErrors.push({
-          line: index + 1,
-          errors: lineErrors
-        })
-      }
-    })
-    
-    if (report.rowErrors.length > 0) {
-      report.hasIssues = true
-      report.totalIssues += report.rowErrors.length
-      report.warnings.push({
-        type: 'data_errors',
-        title: `${report.rowErrors.length} ligne(s) contiennent des erreurs de données`,
-        message: `Ces lignes seront ignorées lors de l'import vers SnipeIT`,
-        details: report.rowErrors
-      })
-    }
-    
-    report.isValid = report.errors.length === 0
-    
-    return { report, rows }
-    
-  } catch (e) {
-    report.hasIssues = true
-    report.totalIssues++
-    report.errors.push({
-      type: 'parse_error',
-      title: 'Erreur de lecture du fichier',
-      message: e.message
-    })
-    return { report, rows: [] }
-  }
-}
-
+// ── Chargement et validation à l'assignation du fichier ──
 async function assignFile(f, type) {
   if (!f) return
-  
+
   if (type === 'assets') {
-    // Valider le fichier ET obtenir les données parsées
-    const { report, rows } = await validateCSVWithDetails(f)
-    
-    // Stocker le rapport de validation
-    validationReport.value = report
-    showValidationReport.value = report.hasIssues
-    
-    // Message global simplifié
-    if (report.isValid) {
-      globalMsg.value = `✅ Fichier valide : ${rows.length} lignes détectées`
-      globalOk.value = true
-    } else {
-      globalMsg.value = `⚠️ ${report.totalIssues} problème(s) détecté(s). Consultez le rapport ci-dessous.`
-      globalOk.value = false
-    }
-    setTimeout(() => { globalMsg.value = '' }, 5000)
-    
-    // TOUJOURS afficher l'aperçu, même avec des erreurs
-    file1.value = f
+    const rows = await parseCSVFile(f)
     preview1.value = rows
+    file1.value = f
     msg1.value = null
     snipeitLog.value = []
-    
+    importSummary1.value = []
+
+    // Validation (Règles 1 & 3)
+    const result = await validateAssetsFile(f, rows)
+    assets1Validation.value = result
+
+    if (!result.canImport) {
+      globalMsg.value = `❌ Import annulé — ${result.errorMessage}`
+      globalOk.value = false
+    } else if (result.skippedRows.length > 0) {
+      globalMsg.value = `⚠ ${result.skippedRows.length} ligne(s) seront ignorées (types invalides).`
+      globalOk.value = false
+    } else {
+      globalMsg.value = `✅ Fichier valide — ${result.validRows.length} lignes prêtes à importer`
+      globalOk.value = true
+    }
+    setTimeout(() => { globalMsg.value = '' }, 6000)
+
   } else {
     const rows = await parseCSVFile(f)
-    file2.value = f
     preview2.value = rows
+    file2.value = f
     msg2.value = null
+    importSummary2.value = []
+
+    const result = await validateFeuil2File(f, rows)
+    feuil2Validation.value = result
+
+    if (!result.canImport) {
+      globalMsg.value = `❌ Import SQLite annulé — ${result.errorMessage}`
+      globalOk.value = false
+    } else if (result.skippedRows.length > 0) {
+      globalMsg.value = `⚠ SQLite : ${result.skippedRows.length} ligne(s) seront ignorées.`
+      globalOk.value = false
+    } else {
+      globalMsg.value = `✅ Fichier SQLite valide — ${result.validRows.length} lignes OK`
+      globalOk.value = true
+    }
+    setTimeout(() => { globalMsg.value = '' }, 6000)
   }
 }
 
@@ -483,24 +400,48 @@ function onFile(e, type) {
   assignFile(e.target.files[0], type)
 }
 
-// ── Import local uniquement ───────────────────────────
+// ── Import local (uniquement les lignes valides) ──────────
 function importLocal() {
+  if (!canImportAssets.value) return
   loading1.value = 'local'
   try {
-    const rows = preview1.value.map((r, i) => ({
-      id:         i + 1,
-      name:       r.name       || r.Nom       || '',
-      asset_tag:  r.asset_tag  || r['Asset Tag'] || `IMP-${i+1}`,
-      category:   r.category   || r.Catégorie || r.Type || '',
-      location:   r.location   || r.Localisation || '',
-      serial:     r.serial     || r['Numéro de série'] || '',
-      model:      r.model      || r.Modèle || '',
-      status:     r.status     || r.Statut  || 'Ready to Deploy',
-      manufacturer: r.manufacturer || r.Fabricant || '',
+    const validRows = assets1Validation.value.validRows
+    const rows = validRows.map((r, i) => ({
+      id:           i + 1,
+      name:         r.name         || '',
+      asset_tag:    r.asset_tag    || `IMP-${i+1}`,
+      category:     r.category     || '',
+      location:     r.location     || '',
+      serial:       r.serial       || '',
+      model:        r.model        || '',
+      status:       r.status       || 'Ready to Deploy',
+      manufacturer: r.manufacturer || '',
+      company:      r.company      || '',
+      department:   r.department   || '',
+      user:         r.user         || '',
+      email:        r.email        || '',
+      purchase_date: r.purchase_date || '',
+      purchase_cost: r.purchase_cost || '',
     }))
     db.importAssets(rows)
+
+    // Règle 4 : résumé
+    const skipped = assets1Validation.value.skippedRows
+    importSummary1.value = assets1Validation.value.summary || []
+    if (rows.length === 0) {
+      importSummary1.value = [{ type: 'warning', text: '⚠ Aucune ligne valide à importer.' }]
+    }
+
     msg1.value = { ok: true, text: `✓ ${rows.length} éléments enregistrés localement.` }
-    history.value.unshift({ id: Date.now(), date: new Date().toLocaleString('fr-FR'), file: file1.value.name, type: 'Local', created: rows.length, errors: 0, ok: true })
+    history.value.unshift({
+      id: Date.now(),
+      date: new Date().toLocaleString('fr-FR'),
+      file: file1.value.name,
+      type: 'Local',
+      created: rows.length,
+      skipped: skipped.length,
+      ok: true,
+    })
   } catch (e) {
     msg1.value = { ok: false, text: 'Erreur : ' + e.message }
   } finally {
@@ -508,29 +449,22 @@ function importLocal() {
   }
 }
 
-// ── Import vers SnipeIT avec création en cascade ──────
+// ── Import vers SnipeIT (uniquement les lignes valides) ───
 async function importToSnipeIT() {
-  // Si des erreurs critiques existent, demander confirmation
-  const hasCriticalErrors = validationReport.value && validationReport.value.errors.length > 0
-  
-  if (hasCriticalErrors) {
-    const confirm = window.confirm(
-      '⚠️ Attention : Des problèmes critiques ont été détectés dans votre fichier.\n\n' +
-      validationReport.value.errors.map(e => `• ${e.title}`).join('\n') + '\n\n' +
-      'L\'import risque d\'échouer ou de produire des résultats incorrects.\n\n' +
-      'Voulez-vous quand même continuer ?'
-    )
-    if (!confirm) return
-  }
-  
+  if (!canImportAssets.value) return
+
   loading1.value = 'snipeit'
   msg1.value     = null
   snipeitLog.value = []
+  importSummary1.value = []
   snipeitProgress.value = { active: true, step: 'Démarrage…', pct: 0 }
 
   try {
+    // N'envoyer que les lignes valides (Règle 3)
+    const validRows = assets1Validation.value.validRows
+
     const result = await fullImport(
-      preview1.value,
+      validRows,
       (step, pct) => {
         snipeitProgress.value = { active: true, step, pct }
       }
@@ -543,12 +477,21 @@ async function importToSnipeIT() {
 
     snipeitProgress.value = { active: false, step: '', pct: 100 }
 
+    // Règle 4 : résumé avec lignes ignorées incluses
+    const skippedRows = assets1Validation.value.skippedRows
+    importSummary1.value = [
+      ...(assets1Validation.value.summary || []),
+      ...(result.failed > 0
+        ? [{ type: 'warning', text: `⚠ ${result.failed} asset(s) rejetés par SnipeIT` }]
+        : [])
+    ]
+
     const ok = result.failed === 0
     msg1.value = {
       ok,
       text: ok
-        ? `✓ ${result.created} assets créés dans SnipeIT avec toutes leurs dépendances.`
-        : `⚠ ${result.created} créés, ${result.failed} échoués. Voir le journal ci-dessous.`
+        ? `✓ ${result.created} assets créés dans SnipeIT.`
+        : `⚠ ${result.created} créés, ${result.failed} échoués. Voir le journal.`
     }
 
     importLocal()
@@ -559,7 +502,7 @@ async function importToSnipeIT() {
       file: file1.value.name,
       type: 'SnipeIT',
       created: result.created,
-      errors:  result.failed,
+      skipped: skippedRows.length + result.failed,
       ok,
     })
 
@@ -569,25 +512,33 @@ async function importToSnipeIT() {
     snipeitProgress.value = { active: false, step: '', pct: 0 }
     msg1.value = { ok: false, text: 'Erreur critique : ' + e.message }
     snipeitLog.value = [{ type: 'error', msg: e.message }]
+    importSummary1.value = [{ type: 'warning', text: '❌ Import échoué : ' + e.message }]
   } finally {
     loading1.value = false
   }
 }
 
-// ── Import Feuil 2 ────────────────────────────────────
+// ── Import Feuil 2 (uniquement les lignes valides) ────────
 async function importFeuil2() {
+  if (!canImportFeuil2.value) return
   loading2.value = true
   msg2.value     = null
+  importSummary2.value = []
   try {
-    await db.importFeuil2(preview2.value)
+    const validRows = feuil2Validation.value.validRows
+    await db.importFeuil2(validRows)
+
+    // Règle 4 : résumé
+    importSummary2.value = feuil2Validation.value.summary || []
+
     msg2.value = { ok: true, text: `✓ ${db.feuil2.length} lignes écrites dans SQLite (newapp.db).` }
     history.value.unshift({
       id: Date.now(),
       date: new Date().toLocaleString('fr-FR'),
       file: file2.value.name,
       type: 'Feuil2 SQLite',
-      created: db.feuil2.length,
-      errors: 0,
+      created: validRows.length,
+      skipped: feuil2Validation.value.skippedRows.length,
       ok: true,
     })
   } catch (e) {
@@ -598,12 +549,13 @@ async function importFeuil2() {
           ? ' → Assurez-vous que le backend tourne : node server/index.js'
           : '')
     }
+    importSummary2.value = [{ type: 'warning', text: '❌ Import SQLite échoué' }]
     history.value.unshift({
       id: Date.now(),
       date: new Date().toLocaleString('fr-FR'),
       file: file2.value.name,
       type: 'Feuil2 SQLite',
-      created: 0, errors: 1, ok: false,
+      created: 0, skipped: 0, ok: false,
     })
   } finally {
     loading2.value = false
@@ -627,85 +579,46 @@ async function importFeuil2() {
   padding: 12px; border: 1px solid var(--border);
 }
 
-/* Validation report */
-.validation-report {
-  border: 1px solid var(--border);
+/* Validation summary (Règle 3 preview) */
+.validation-summary {
+  border: 1px solid var(--yellow);
   border-radius: var(--radius);
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.08);
+  font-size: 0.8rem;
+}
+.validation-title {
+  font-weight: 600;
+  color: var(--yellow);
+  margin-bottom: 6px;
+}
+.skip-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text2);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  padding: 2px 0;
+  border-top: 1px solid rgba(245,158,11,0.2);
+  margin-top: 4px;
+}
+
+/* Import summary (Règle 4) */
+.import-summary {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
   overflow: hidden;
 }
-
-.validation-header {
-  padding: 10px 12px;
-  background: var(--bg3);
-  cursor: pointer;
-  transition: background 0.2s;
+.summary-line {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  border-bottom: 1px solid var(--border);
 }
-
-.validation-header:hover {
-  background: var(--border);
-}
-
-.validation-details {
-  padding: 12px;
-  border-top: 1px solid var(--border);
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.validation-section {
-  margin-bottom: 16px;
-}
-
-.validation-section:last-child {
-  margin-bottom: 0;
-}
-
-.validation-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.validation-item {
-  padding: 8px 12px;
-  background: var(--bg2);
-  border-radius: var(--radius-sm);
-  margin-bottom: 8px;
-}
-
-.validation-item.error {
-  border-left: 3px solid var(--red);
-  background: var(--redbg);
-}
-
-.validation-item.warning {
-  border-left: 3px solid var(--yellow);
-  background: rgba(245, 158, 11, 0.1);
-}
-
-.validation-item.info {
-  border-left: 3px solid var(--blue);
-  background: var(--bluebg);
-}
-
-.text-red { color: var(--red); }
-.text-yellow { color: var(--yellow); }
-.text-blue { color: var(--blue); }
-
-.tag-warning {
-  background: var(--yellow);
-  color: var(--bg);
-}
-
-.badge-green {
-  background: var(--green);
-  color: white;
-}
-
-.badge-yellow {
-  background: var(--yellow);
-  color: var(--bg);
-}
+.summary-line:last-child { border-bottom: none; }
+.summary-line.success { color: var(--green); background: var(--greenbg); }
+.summary-line.warning { color: var(--yellow); background: rgba(245,158,11,0.08); }
 
 /* Progress */
 .progress-block { background: var(--bg3); border-radius: var(--radius); padding: 12px; border: 1px solid var(--border); }
@@ -742,7 +655,7 @@ async function importFeuil2() {
   padding: 10px 14px; background: var(--greenbg);
   border: 1px solid var(--green); border-radius: var(--radius);
   font-size: 0.875rem; color: var(--green);
-}
+} 
 
 .flex-between {
   display: flex;
@@ -750,10 +663,7 @@ async function importFeuil2() {
   align-items: center;
 }
 
-.flex {
-  display: flex;
-}
-
+.flex { display: flex; }
 .gap-2 { gap: 8px; }
 .gap-3 { gap: 12px; }
 .mt-1 { margin-top: 4px; }
