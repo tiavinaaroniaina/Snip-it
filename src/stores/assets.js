@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { fetchAssets, fetchCategories, fetchLocations } from '@/services/snipeit'
+import { fetchAssets, fetchCategories, fetchLocations, fetchUsers } from '@/services/snipeit'
 
 const KEYS = {
   assets:     'snipeit_assets',
@@ -103,28 +103,52 @@ export const useAssetsStore = defineStore('assets', () => {
     }
 
     try {
+      // 🔑 Étape 1 : Récupérer TOUS les utilisateurs avec leurs départements
+      let userMap = {}
+      try {
+        const usersData = await fetchUsers()
+        userMap = {}
+        usersData.rows.forEach(u => {
+          userMap[u.id] = {
+            name: u.name,
+            email: u.username,
+            department: u.department?.name || '',
+            department_id: u.department?.id || null
+          }
+        })
+      } catch (e) {
+        results.errors.push('Utilisateurs : ' + e.message)
+      }
+      
+      // 🔑 Étape 2 : Récupérer les assets et les enrichir avec les départements des utilisateurs
       const assetData = await fetchAssets()
-      const rows = (assetData.rows || []).map(a => ({
-        id:            a.id,
-        name:          a.name,
-        asset_tag:     a.asset_tag,
-        category:      a.category?.name     || '',
-        category_id:   a.category?.id       || null,
-        location:      a.location?.name     || '',
-        location_id:   a.location?.id       || null,
-        status:        a.status_label?.name || '',
-        model:         a.model?.name        || '',
-        serial:        a.serial             || '',
-        manufacturer:  a.manufacturer?.name || '',
-        company:       a.company?.name      || '',
-        company_id:    a.company?.id        || null,
-        department:    a.department?.name   || '',
-        department_id: a.department?.id     || null,
-        user:          a.assigned_to?.name  || '',
-        email:         a.assigned_to?.username || '',
-        purchase_date: a.purchase_date?.formatted || '',
-        purchase_cost: a.purchase_cost      || '',
-      }))
+      const rows = (assetData.rows || []).map(a => {
+        const userId = a.assigned_to?.id
+        const user = userId && userMap[userId] ? userMap[userId] : null
+        
+        return {
+          id:            a.id,
+          name:          a.name,
+          asset_tag:     a.asset_tag,
+          category:      a.category?.name     || '',
+          category_id:   a.category?.id       || null,
+          location:      a.location?.name     || '',
+          location_id:   a.location?.id       || null,
+          status:        a.status_label?.name || '',
+          model:         a.model?.name        || '',
+          serial:        a.serial             || '',
+          manufacturer:  a.manufacturer?.name || '',
+          company:       a.company?.name      || '',
+          company_id:    a.company?.id        || null,
+          // 🔑 Département vient de l'utilisateur assigné (pas de l'asset directement)
+          department:    user?.department      || '',
+          department_id: user?.department_id   || null,
+          user:          a.assigned_to?.name   || '',
+          email:         a.assigned_to?.username || '',
+          purchase_date: a.purchase_date?.formatted || '',
+          purchase_cost: a.purchase_cost      || '',
+        }
+      })
       assets.value = rows
       save(KEYS.assets, rows)
       results.assets = rows.length
